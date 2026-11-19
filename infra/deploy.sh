@@ -173,16 +173,19 @@ cmd_app() {
 cmd_update() {
   load_names
   log "Roll out tag $TAG to $APP"
-  local app_id tmp
+  # Always send a fresh revision suffix: once a suffix is set (e.g. by `restart`), a PATCH that
+  # omits it keeps the old one and the new revision name collides (provisioning Failed).
+  local app_id tmp suffix
+  suffix="u$(date -u +%m%d%H%M%S)"
   app_id="$(az containerapp show -n "$APP" -g "$RG" --query id -o tsv)"
   tmp="$(mktemp -d)"
   # Read with the same API version the PATCH uses: `az containerapp show` returns a newer shape
   # (imageType, scale.cooldownPeriod, ...) that 2024-03-01 rejects.
   az rest --method get --url "https://management.azure.com${app_id}?api-version=2024-03-01" -o json > "$tmp/app.json"
-  jq --arg a "$ACR_SERVER/besidepoc-app:$TAG" --arg p "$ACR_SERVER/besidepoc-proxy:$TAG" \
+  jq --arg a "$ACR_SERVER/besidepoc-app:$TAG" --arg p "$ACR_SERVER/besidepoc-proxy:$TAG" --arg s "$suffix" \
     '{properties: {template: (.properties.template
         | .containers |= map(if .name == "proxy" then .image = $p else .image = $a end)
-        | del(.revisionSuffix))}}' "$tmp/app.json" > "$tmp/patch.json"
+        | .revisionSuffix = $s)}}' "$tmp/app.json" > "$tmp/patch.json"
   az rest --method patch --url "https://management.azure.com${app_id}?api-version=2024-03-01" \
     --body "@$tmp/patch.json" -o none
   rm -rf "$tmp"
@@ -193,7 +196,7 @@ cmd_update() {
     read -r state latest ready image < <(az containerapp show -n "$APP" -g "$RG" \
       --query "[properties.provisioningState, properties.latestRevisionName, properties.latestReadyRevisionName, properties.template.containers[?name=='ui'].image | [0]]" -o tsv 2>/dev/null | tr '\n' ' ') || true
     [[ "$state" == Failed ]] && die "Revision provisioning failed. Check: az containerapp revision list -n $APP -g $RG -o table"
-    if [[ "$state" == Succeeded && "$image" == *":$TAG" && -n "$latest" && "$latest" == "$ready" ]]; then
+    if [[ "$state" == Succeeded && "$image" == *":$TAG" && "$latest" == *"--$suffix" && "$latest" == "$ready" ]]; then
       echo "   $latest is ready"; break
     fi
     sleep 10
