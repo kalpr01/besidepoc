@@ -13,9 +13,18 @@ import os
 import time
 
 import httpx
+import logging
 from fastapi import FastAPI, Request, HTTPException
 
 app = FastAPI(title="Occlet Lithic ASA Responder", docs_url=None, redoc_url=None, openapi_url=None)
+_log = logging.getLogger("uvicorn.error")
+
+
+def _auth_header_names(headers) -> str:
+    """Which signing headers arrived (names only, never values) for diagnosing 401s."""
+    names = {k.lower() for k in headers.keys()}
+    wanted = ("webhook-id", "webhook-timestamp", "webhook-signature", "x-lithic-hmac")
+    return ",".join(n for n in wanted if n in names) or "none"
 
 
 def verify_lithic_signature(raw: bytes, headers: dict, secret: str, now: float | None = None):
@@ -74,7 +83,10 @@ async def lithic_asa(request: Request):
     try:
         wid = verify_lithic_signature(raw, dict(request.headers), secret)
         payload = json.loads(raw)
-    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as err:
+        # Reason strings are our own fixed messages; no secret or payload is logged.
+        _log.warning("ASA rejected: %s (signing headers: %s)", type(err).__name__ + ": " + str(err)[:80],
+                     _auth_header_names(request.headers))
         raise HTTPException(401, "Invalid signed ASA request") from None
     if not isinstance(payload, dict):
         raise HTTPException(400, "Invalid ASA payload")
@@ -114,7 +126,9 @@ async def lithic_transaction_event(request: Request):
         event=json.loads(raw)
         if not isinstance(event,dict) or event.get('event_type')!='card_transaction.updated':
             raise ValueError('Unsupported event payload')
-    except (ValueError,UnicodeDecodeError,json.JSONDecodeError):
+    except (ValueError,UnicodeDecodeError,json.JSONDecodeError) as err:
+        _log.warning("Event rejected: %s (signing headers: %s)", type(err).__name__ + ": " + str(err)[:80],
+                     _auth_header_names(request.headers))
         raise HTTPException(401,'Invalid signed transaction event') from None
     try:
         async with httpx.AsyncClient(timeout=5.0,trust_env=False) as client:
