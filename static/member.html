@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Occlet · Member Wallet & Arrangements</title>
+  <link rel="stylesheet" href="/member/assets/member.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand"><div class="brand-symbol" aria-hidden="true"><span></span></div><div><strong>occlet</strong><small>MEMBER EXPERIENCE</small></div></div>
+      <div class="profile-mini"><span class="avatar">TM</span><div><b>Test Member</b><small>Demo credit union</small></div></div>
+      <nav class="side-nav" aria-label="Member portal">
+        <a href="#overview" data-page="overview" class="selected"><span class="nav-icon">◫</span> Overview</a>
+        <a href="#arrangements" data-page="arrangements"><span class="nav-icon">◈</span> Arrangements</a>
+        <a href="#agents" data-page="agents"><span class="nav-icon">✦</span> My agents</a>
+        <a href="#w4" data-page="w4"><span class="nav-icon">↗</span> W4 walkthrough</a>
+        <a href="#activity" data-page="activity"><span class="nav-icon">☷</span> Activity & evidence</a>
+      </nav>
+      <div class="side-bottom"><span class="live-dot"></span> LOCAL DEMO · NO LIVE FUNDS<br><a href="/" target="_blank" rel="noopener">Open engineering lab ↗</a></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><span class="eyebrow">OCCLET / MEMBER BANKING</span><div class="breadcrumb" id="breadcrumb">Overview</div></div>
+        <div class="top-actions"><span id="db-pill" class="pill muted">Checking PostgreSQL</span><button id="refresh" class="icon-button" aria-label="Refresh member data" title="Refresh from Occlet">↻</button><span class="top-avatar" aria-label="Test member">TM</span></div>
+      </header>
+      <div class="banner" role="note"><b>Sandbox walkthrough.</b> This member experience is not authenticated and uses synthetic finances. Keep it on <code>127.0.0.1:8000</code>; expose only the Lithic callback bridge on port 8001.</div>
+      <div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
+
+      <section id="page-overview" data-page-content="overview" class="page">
+        <div class="heading-row"><div><span class="eyebrow">GOOD TO SEE YOU</span><h1>Good afternoon, Test Member</h1><p>Your accounts, spending arrangements and delegated agents in one place.</p></div><button class="button primary" data-go="agents">+ Add an agent</button></div>
+        <div id="setup-account-banner" class="surface setup-account" hidden><div><b>Set up your demo funding account</b><p>Initialize a $500 SQL account and a $300 trip protection. You can then add agents, connect your Lithic parent card and run W4.</p></div><button id="overview-start" class="button primary">Initialize member account</button></div>
+        <div class="overview-hero"><div><span class="hero-label">SHARED FUNDING ARRANGEMENT</span><div class="hero-amount" id="overview-balance">—</div><div class="hero-sub">Available for spending <span id="funding-mode-note"></span></div></div><div class="hero-chip"><span>Parent card</span><strong id="hero-card">Not linked</strong><small>Lithic sandbox · test credential</small></div></div>
+        <div class="metrics"><article class="metric"><div class="metric-icon teal">▣</div><div><span>Cash in account</span><strong id="overview-cash">—</strong></div></article><article class="metric"><div class="metric-icon amber">↗</div><div><span>Authorization holds</span><strong id="overview-holds">—</strong></div></article><article class="metric"><div class="metric-icon violet">◈</div><div><span>Protected trip funds</span><strong id="overview-protected">—</strong></div></article></div>
+        <div class="two-column"><article class="surface"><div class="section-header"><div><h2>Account & card relationship</h2><p>One funding source, multiple controlled ways to spend.</p></div><button class="text-button" data-go="arrangements">View details →</button></div><div id="overview-linkage" class="linkage"></div></article><article class="surface"><div class="section-header"><div><h2>Your arrangements</h2><p>Member-defined permissions, never separate money.</p></div></div><div id="overview-arrangements" class="stack"></div></article></div>
+        <article class="surface callout"><div class="callout-icon">◎</div><div><h3>Demonstrate member-first protection</h3><p>W4 protects a $300 trip reservation in policy, then tests a $350 grocery purchase against the same $500 account.</p></div><button class="button outline" data-go="w4">Explore W4</button></article>
+      </section>
+
+      <section id="page-arrangements" data-page-content="arrangements" class="page" hidden>
+        <div class="heading-row"><div><span class="eyebrow">MY MONEY, MY RULES</span><h1>Account & arrangements</h1><p>Funding and permissions are linked, but managed separately.</p></div><button class="button outline" id="open-link-form">Link Lithic parent card</button></div>
+        <div class="two-column"><article class="surface"><div class="section-header"><div><h2>Shared funding account</h2><p>Authoritative in PostgreSQL only when SQL ledger mode is enabled.</p></div><span class="tag" id="parent-status-tag">—</span></div><dl class="facts"><div><dt>Arrangement ID</dt><dd id="fact-arrangement">—</dd></div><div><dt>Funding mode</dt><dd id="fact-mode">—</dd></div><div><dt>Available funds</dt><dd id="fact-available">—</dd></div><div><dt>Pending holds</dt><dd id="fact-holds">—</dd></div><div><dt>Lithic account token</dt><dd class="mono wrap-id" id="fact-lithic-account">Not linked</dd></div><div><dt>Parent card</dt><dd id="fact-card">Not linked</dd></div></dl><div class="row-actions"><button class="button subtle" id="pause-parent">Pause funding</button><button class="button subtle" id="resume-parent">Resume funding</button></div></article><article class="surface"><h2>Arrangement relationship</h2><p class="helper">The trip and agent permissions do not create additional deposit accounts.</p><div id="arrangement-tree" class="tree"></div></article></div>
+        <article id="link-panel" class="surface section-gap" hidden><div class="section-header"><h2>Link existing Lithic sandbox card</h2><button class="text-button" id="close-link-panel">Close ✕</button></div><p class="helper">Use the Lithic <strong>account token</strong> and <strong>card token</strong>, never PAN or CVV. This verifies the card against Lithic.</p><form id="link-form" class="form-grid"><label>Lithic account token<input id="link-account" required autocomplete="off" placeholder="Account UUID"></label><label>Parent card token<input id="link-card" required autocomplete="off" placeholder="Card UUID"></label><div class="form-footer"><button type="submit" class="button primary">Verify & link parent card</button></div></form></article>
+        <article class="surface section-gap"><div class="section-header"><div><h2>Member-defined spending arrangements</h2><p>Each purpose sets policy and priority, not a second ledger balance.</p></div><button class="button outline" data-go="agents">+ Add delegated agent</button></div><div id="arrangement-list" class="stack"></div></article>
+      </section>
+
+      <section id="page-agents" data-page-content="agents" class="page" hidden>
+        <div class="heading-row"><div><span class="eyebrow">DELEGATED SPENDING</span><h1>My agents</h1><p>Give an agent a purpose, a payment instrument and strictly limited authority.</p></div><button class="button primary" id="show-agent-form">+ New agent</button></div>
+        <div class="security-strip"><span class="security-icon">⌁</span><div><b>Secure delegation</b><p>The agent receives a scoped virtual card reference. Its Ed25519 signing key stays in this browser session; no PAN or CVV is stored in the interface.</p></div></div>
+        <article id="agent-form-panel" class="surface section-gap" hidden><div class="section-header"><div><h2>Register a new purchasing agent</h2><p>Capture the member's standing goal before any payment is attempted.</p></div><button id="close-agent-form" class="text-button">Cancel ✕</button></div>
+          <form id="agent-form" class="form-grid">
+            <label>Agent name<input id="agent-name" maxlength="100" required value="Grocery assistant" placeholder="E.g. Weekly groceries assistant"></label>
+            <label>Purchase purpose<select id="agent-purpose"><option value="GROCERIES">Household groceries</option><option value="TICKETS">Events & tickets</option></select></label>
+            <label class="full">What is this agent allowed to do?<input id="agent-goal" maxlength="240" required value="Purchase weekly household groceries" placeholder="E.g. Purchase tickets for family outings"></label>
+            <label>Maximum per purchase ($)<input id="agent-max" type="number" min="1" max="100000" step="0.01" required value="120"></label>
+            <label>Total delegated budget ($)<input id="agent-budget" type="number" min="1" max="100000" step="0.01" required value="300"></label>
+            <label>Automatic approval up to ($)<input id="agent-threshold" type="number" min="1" max="100000" step="0.01" required value="25"></label>
+            <label>Authorization method<select id="agent-flow"><option value="SIGNED_INTENT_REQUIRED">A · Signed intent before payment</option><option value="CARD_BOUND_NETWORK">B · Network-direct card attribution</option></select></label>
+            <div class="form-footer"><span class="helper">The new virtual card inherits the same parent's financial controls.</span><button type="submit" class="button primary" id="save-agent">Register agent & issue card</button></div>
+          </form>
+        </article>
+        <div class="section-header section-gap"><div><h2>Registered agents</h2><p id="agent-count">No agents registered</p></div></div><div id="agent-list" class="agent-grid"></div>
+        <article class="surface section-gap" id="purchase-panel" hidden><div class="section-header"><div><h2>Try an agent purchase</h2><p>Test delegated policy through the existing Occlet authorization engine.</p></div></div><form id="purchase-form" class="form-grid"><label>Agent virtual card<select id="purchase-card"></select></label><label>Transaction amount ($)<input type="number" id="purchase-amount" min="0.01" step="0.01" value="20" required></label><label>Merchant<select id="purchase-merchant"><option value="GROCERY_101">Grocery demo store</option><option value="TICKETS_303">Ticket merchant</option></select></label><label>Execution route<select id="purchase-route"><option value="LOCAL">Local simulated network</option><option value="LITHIC">Lithic sandbox (requires linked test virtual card)</option></select></label><div class="form-footer"><button type="submit" class="button primary">Request / authorize payment</button></div></form><div class="member-decision" id="purchase-result" hidden></div><div class="row-actions" id="purchase-actions" hidden><button id="purchase-approve" class="button outline">Member approve intent</button><button id="purchase-complete" class="button primary">Continue authorization</button></div><div class="row-actions"><button class="button subtle" id="link-agent-lithic">Issue Lithic sandbox virtual card for selected agent</button></div></article>
+      </section>
+
+      <section id="page-w4" data-page-content="w4" class="page" hidden>
+        <div class="heading-row"><div><span class="eyebrow">USE CASE W4 · PROTECTED SPENDING</span><h1>Your trip comes first</h1><p>See why member-defined priorities can stop an otherwise affordable purchase.</p></div><span class="tag dark">YIELD OFF</span></div>
+        <article class="story-card"><div><div class="eyebrow">THE SCENARIO</div><h2>You saved $300 for a trip. A $350 grocery purchase comes through.</h2><p>You have $500 total, but only $200 is free to spend without affecting your trip. Occlet should protect your trip—even though the bank account has enough money.</p><div class="story-flow"><span>1. Protect trip</span><span>2. Decline purchase</span><span>3. Release $150</span><span>4. Retry</span><span>5. Settle</span></div></div><div class="story-illustration">$500<span>ONE SHARED ACCOUNT</span></div></article>
+        <div class="metrics"><article class="metric"><div class="metric-icon violet">◈</div><div><span>Trip protection</span><strong id="w4-protect">—</strong></div></article><article class="metric"><div class="metric-icon teal">▣</div><div><span>Available cash</span><strong id="w4-available">—</strong></div></article><article class="metric"><div class="metric-icon amber">◇</div><div><span>Free spending room</span><strong id="w4-free">—</strong></div></article></div>
+        <div class="two-column"><article class="surface"><div class="section-header"><div><h2>Guided member journey</h2><p>Use these actions in order. They call the real demo API.</p></div></div><div class="journey"><div class="journey-step"><span>01</span><div><b>Set up protected trip</b><p>Load $500 into the SQL demo ledger and protect $300 for travel.</p><button class="button outline" id="w4-init">Start fresh W4</button></div></div><div class="journey-step"><span>02</span><div><b>Try to spend $350</b><p>Occlet checks policy and should decline with <code>PROTECTED_BY_MEMBER</code>.</p><button class="button outline" id="w4-attempt">Attempt grocery purchase</button></div></div><div class="journey-step"><span>03</span><div><b>Review & release protection</b><p>Member allows $150 of the trip protection to be used. No money moves yet.</p><button class="button outline" id="w4-release">Release $150</button></div></div><div class="journey-step"><span>04</span><div><b>Retry the grocery purchase</b><p>One $350 hold is created on the parent account.</p><button class="button outline" id="w4-retry">Retry $350</button></div></div><div class="journey-step"><span>05</span><div><b>Clear the transaction</b><p>Settle $345 and release the unused $5.</p><button class="button outline" id="w4-settle">Settle $345</button></div></div></div></article><article class="surface"><div class="section-header"><div><h2>Authorization result</h2><p>Policy decision and balance evidence.</p></div><span class="tag" id="w4-outcome-tag">NOT STARTED</span></div><div class="result-card"><b id="w4-result-title">Ready for W4</b><p id="w4-result-message">Initialize the W4 scenario to begin.</p></div><div class="evidence-grid"><div><span>Cash</span><b id="w4-cash">—</b></div><div><span>Financial hold</span><b id="w4-holds">—</b></div><div><span>Protected amount</span><b id="w4-protected-detail">—</b></div><div><span>Permission releases</span><b id="w4-releases-count">—</b></div></div><div class="section-header thin"><h3>See it through Lithic</h3></div><p class="helper">When the parent test card is linked, Lithic sends an ASA callback; Occlet applies the same W4 policy and SQL reservation. Settlement events need the separately configured signed webhook.</p><div class="row-actions"><button class="button subtle" id="w4-lithic">Simulate Lithic purchase</button><button class="button subtle" id="w4-lithic-status">Check Lithic result</button></div></article></div>
+        <article class="surface section-gap"><div class="section-header"><div><h2>W4 decision & ledger history</h2><p>No journal entry for a decline or permission release.</p></div><button class="text-button" id="w4-refresh">Refresh →</button></div><div id="w4-evidence" class="evidence-list"></div></article>
+      </section>
+
+      <section id="page-activity" data-page-content="activity" class="page" hidden><div class="heading-row"><div><span class="eyebrow">DECISIONS THAT CAN BE EXPLAINED</span><h1>Activity & evidence</h1><p>Policy decisions, agent transactions and ledger evidence from this demo.</p></div><button class="button outline" id="activity-refresh">Refresh activity</button></div><div class="two-column"><article class="surface"><h2>Recent decisions</h2><div id="activity-traces" class="stack"></div></article><article class="surface"><h2>Member & system activity</h2><div id="activity-events" class="stack"></div></article></div></section>
+      <footer class="footer">Occlet · Demonstration only · Local member controls are not authenticated · <a href="/" target="_blank" rel="noopener">Engineering view</a></footer>
+    </main>
+  </div>
+  <script src="/member/assets/member.js" defer></script>
+</body>
+</html>

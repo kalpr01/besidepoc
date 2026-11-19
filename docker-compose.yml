@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: occlet-demo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: occlet
+      POSTGRES_USER: occlet_demo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_occlet_demo_only}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - occlet_pgdata:/var/lib/postgresql/data
+      - ./db/001_arrangements.sql:/docker-entrypoint-initdb.d/001_arrangements.sql:ro
+      - ./db/002_occlet_local_ledger.sql:/docker-entrypoint-initdb.d/002_occlet_local_ledger.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U occlet_demo -d occlet"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+volumes:
+  occlet_pgdata:

@@ -1,0 +1,33 @@
+# Front proxy for the Container App. The only listener on the ingress port (8080).
+# Container Apps ingress terminates TLS and Easy Auth runs before traffic reaches here.
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	# The ui app trusts loopback callers on /api/internal/*. Everything arriving here
+	# comes from outside the pod, so never forward those paths.
+	handle /api/internal/* {
+		respond "Forbidden" 403
+	}
+
+	# Lithic ASA + Events webhooks (HMAC-verified by the bridge) and health check.
+	handle /lithic/* {
+		reverse_proxy 127.0.0.1:8001
+	}
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8001
+	}
+
+	# Beside member UI, engineering lab and Occlet APIs.
+	handle {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

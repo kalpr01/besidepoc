@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Occlet • Agentic Card Lab</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0c1220; --panel:#141d2c; --line:#2b3547; --ink:#e9eef8; --muted:#9facbf; --teal:#45dec2; --amber:#ffc879; --red:#ff9393; }
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 85% 5%,#192f40 0%,transparent 35%),var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .wrap{max-width:1180px;margin:0 auto;padding:32px 22px 60px} header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px}
+    .brand{font-size:14px;letter-spacing:.18em;font-weight:800;color:var(--teal)} h1{font-size:31px;letter-spacing:-.04em;line-height:1.1;margin:9px 0} h2{font-size:16px;margin:0 0 14px} p{color:var(--muted)} .eyebrow{color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.14em;font-weight:700}
+    .pill{border:1px solid #326a64;color:var(--teal);border-radius:30px;padding:6px 12px;font-size:12px;white-space:nowrap}
+    .warning{background:#222719;border:1px solid #70602f;border-radius:12px;padding:11px 15px;color:#f1dda5;margin-bottom:22px;font-size:13px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:rgba(20,29,44,.95);border:1px solid var(--line);border-radius:15px;padding:20px;min-width:0} .wide{grid-column:1 / -1}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.split{display:flex;justify-content:space-between;align-items:center;gap:8px}.meta{font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);overflow-wrap:anywhere}
+    label{font-size:12px;color:#b8c5d5;display:block;margin:10px 0 5px} input,select{width:100%;border:1px solid #39445a;border-radius:8px;background:#0c1421;color:var(--ink);padding:10px 12px;font:inherit} input:focus,select:focus{outline:2px solid #368e83;outline-offset:0} .inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    button{background:var(--teal);color:#102322;border:0;padding:10px 15px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px} button:hover{filter:brightness(1.07)} button.secondary{color:#ebf1f9;background:#293549} button.danger{background:#6f2838;color:#ffe1e6} button:disabled{opacity:.55;cursor:default}
+    .step{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:#263f40;color:var(--teal);border-radius:50%;font-weight:700;margin-right:8px}
+    .notice{background:#102539;border:1px solid #315066;border-radius:10px;padding:11px 13px;color:#badbea;white-space:pre-wrap;overflow-wrap:anywhere;min-height:52px;margin-top:14px;font-size:13px}
+    .notice.ok{background:#122a29;color:#91e7d6;border-color:#2c655f} .notice.bad{background:#38252c;color:#ffc0c8;border-color:#77454d}
+    .budget{display:flex;gap:12px;margin-top:14px}.metric{background:#101a29;border:1px solid #2a384e;border-radius:10px;flex:1;padding:10px}.metric b{font-size:19px;display:block}.metric span{font-size:11px;color:var(--muted)}
+    .events{max-height:360px;overflow:auto}.event{display:grid;grid-template-columns:100px 160px 1fr;gap:12px;padding:10px 0;border-bottom:1px solid #273345;font-size:12px}.event .outcome{color:var(--teal)}.event .decline{color:var(--red)}
+    code{color:#80d4dc} .help{font-size:12px;margin:8px 0;color:var(--muted)}.accent{color:var(--teal)}
+    /* Separate execution environments; shared configuration remains visible in both. */
+    [hidden]{display:none !important}
+    .mode-note{margin:0 0 14px;padding:12px 15px;background:#102a2c;border:1px solid #32615d;border-radius:12px;color:#c5ece4;font-size:13px}
+    .mode-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 22px}
+    button.mode-tab{background:#101a29;color:var(--muted);border:1px solid var(--line);border-radius:12px;text-align:left;padding:15px 17px;display:flex;flex-direction:column;gap:3px;font-size:16px}
+    button.mode-tab.active,button.mode-tab[aria-selected="true"]{background:#14312f;border:2px solid var(--teal);color:var(--ink);padding:14px 16px}
+    button.mode-tab:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+    .mode-tab small{font-size:12px;color:var(--muted);font-weight:500}.tab-icon{font-size:15px;color:var(--teal)}
+    .shared-heading{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin:0 0 11px}.shared-heading h2{font-size:20px;margin:5px 0 0}.shared-heading .help{max-width:430px}
+    .shared-grid{margin-bottom:24px}.mode-panel{border-top:1px solid var(--line);padding-top:20px;scroll-margin-top:20px}.mode-panel .grid{margin-bottom:24px}
+    .mode-intro{background:linear-gradient(110deg,#102b30 0%,#151f30 90%);border-color:#38625e}.mode-intro h2{font-size:20px;margin:5px 0}.mode-intro p{margin:3px 0 14px}
+    .step-strip{display:flex;flex-wrap:wrap;gap:8px}.step-strip span{border:1px solid #41655f;background:#132b2b;border-radius:50px;padding:5px 12px;color:#c1e3df;font-size:12px}
+    .common-output{border-top:1px solid var(--line);padding-top:22px;margin-top:6px}
+    @media(max-width:800px){.shared-heading{flex-direction:column;align-items:flex-start}.mode-tabs{gap:7px}.mode-tab small{font-size:10px}button.mode-tab{font-size:14px;padding:12px}button.mode-tab.active{padding:11px}}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.inputs{grid-template-columns:1fr 1fr}.event{grid-template-columns:1fr 1fr}.event .details{grid-column:1 / -1}.wrap{padding:20px 12px}h1{font-size:26px}}
+  </style>
+</head>
+<body><div class="wrap">
+  <div style="padding:13px 18px;margin-bottom:15px;background:#173331;border:1px solid #3b8275;border-radius:12px;color:#dafff8;font-size:14px;display:flex;gap:15px;align-items:center;flex-wrap:wrap">
+    <strong>Member experience:</strong><a href="/member/delegated" style="color:#76f1d2;font-weight:700">Open Beside · Delegated Card</a><a href="/member/delegated/setup" style="color:#76f1d2">Create delegated card / setup</a>
+  </div>
+  <header><div><div class="brand">OCCLET / LABS</div><h1>Agentic card authorization lab</h1><p style="margin:6px 0 0">One shared funding arrangement and agent policy model. Compare Local SQL execution with Lithic sandbox authorization.</p></div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a href="/member/delegated" style="color:#bff1dd;border:1px solid #467c70;border-radius:8px;padding:10px 13px;text-decoration:none;font-size:12px;font-weight:700">↗ Member experience</a><div class="pill">LOCAL + LITHIC / TWO FLOWS + W4</div></div></header>
+  <div class="warning"><strong>Security boundary:</strong> Lithic is test-only. The optional Capital One path releases a merchant website URL after a signed agent request is approved; it is NOT a Capital One authorization or decline. Only enter your real virtual-card number on the merchant’s own HTTPS checkout, never in Occlet. Local member controls are unauthenticated; never expose port 8000.</div>
+  <div class="mode-note" role="status"><strong>Two execution environments plus a W4 use case.</strong> Local uses an Occlet PostgreSQL demo ledger; Lithic uses sandbox card APIs and ASA. The W4 tab runs protected-intent spending against the same local ledger. Switching tabs does not duplicate funds or create cards.</div>
+  <section class="card" id="admin-hold-review" style="margin-bottom:18px">
+    <div class="split"><h2>Admin operations · Member hold-release requests</h2><button id="admin-review-refresh" class="secondary" type="button">Refresh requests</button></div>
+    <p class="help">Card linking, Lithic issuance and ledger setup remain in the engineering lab below. Members request hold review in Beside. Only an admin/processor may reverse a local demo hold; real Lithic transactions must follow network reversal events.</p>
+    <div id="admin-review-list" class="events"><p class="meta">Select “Refresh requests” to inspect member requests.</p></div>
+    <div id="admin-review-feedback" class="notice" aria-live="polite" style="min-height:auto"></div>
+  </section>
+  <nav class="mode-tabs" role="tablist" aria-label="Authorization environments and use cases">
+    <button type="button" id="tab-local-button" class="mode-tab active" role="tab" aria-controls="panel-local" aria-selected="true" tabindex="0" data-tab="local"><span class="tab-icon">⌘</span> Local Demo <small>PostgreSQL + simulated network</small></button>
+    <button type="button" id="tab-lithic-button" class="mode-tab" role="tab" aria-controls="panel-lithic" aria-selected="false" tabindex="-1" data-tab="lithic"><span class="tab-icon">↗</span> Lithic Sandbox <small>Test cards + ASA callbacks</small></button>
+    <button type="button" id="tab-w4-button" class="mode-tab" role="tab" aria-controls="panel-w4" aria-selected="false" tabindex="-1" data-tab="w4"><span class="tab-icon">◈</span> Use Cases · W4 <small>Protected trip + parent-card purchase</small></button>
+  </nav>
+  <div class="shared-heading" id="shared-heading"><div><span class="eyebrow">Shared setup · applies to both tabs</span><h2>Member, funding arrangement and agent delegation</h2></div><p class="help">Configure once. Flow A needs a signed payment intent; Flow B uses card-bound attribution without per-purchase agent proof.</p></div>
+  <div class="grid shared-grid" id="shared-config">
+    <section class="card wide"><h2><span class="step">0</span> Choose the agent authorization flow</h2>
+      <div class="grid">
+        <div style="border:1px solid #3a6960;border-radius:12px;padding:14px;background:#122a29"><strong style="color:var(--teal)">FLOW A — Signed intent before network auth</strong><p class="help">At registration, the member chooses groceries or tickets and limits. At purchase time, the agent signs a payment intent. Occlet verifies the signature and any member approval <em>before</em> the separate Lithic authorization.</p><div class="meta">Agent signature → READY intent → Lithic ASA → exact card/merchant/amount match</div></div>
+        <div style="border:1px solid #6b5d43;border-radius:12px;padding:14px;background:#292519"><strong style="color:var(--amber)">FLOW B — Network authorization directly</strong><p class="help">The network delivers the virtual-card token, merchant and amount. Occlet infers the agent from the card's one-to-one registration, applies parent and delegated rules, and approves only within the auto-approval limit.</p><div class="meta">Lithic ASA → card-to-agent mapping → policy → funding. <strong>Attribution ≠ verified agent identity.</strong></div></div>
+      </div>
+      <label for="flow-type">Flow to configure on the next agentic virtual card</label>
+      <select id="flow-type"><option value="SIGNED_INTENT_REQUIRED">Flow A — Signed payment intent required</option><option value="CARD_BOUND_NETWORK">Flow B — Network direct (card-bound agent attribution)</option></select>
+      <div id="flow-description" class="notice">Flow A requires a signed pre-purchase intent; no approved intent means the later network authorization is declined.</div>
+    </section>
+    <section class="card wide"><h2><span class="step">1</span> Configure shared funding arrangement</h2>
+      <p class="help">Parent and agentic cards resolve to one funding arrangement. Configure parent policy here, then initialize the authoritative <strong>demo-only PostgreSQL ledger</strong> under the Local tab. This panel never displays an authoritative Lithic balance.</p>
+      <div class="inputs">
+        <div><label for="parent-credit">Illustrative parent credit ($)</label><input id="parent-credit" type="number" value="5000" min="1" /></div>
+        <div><label for="parent-max">Parent transaction ceiling ($)</label><input id="parent-max" type="number" value="1000" min="1" /></div>
+        <div><label for="parent-monthly">Shared account policy cap ($)</label><input id="parent-monthly" type="number" value="5000" min="1" /></div>
+      </div>
+      <div class="row" style="margin-top:14px"><button id="parent-enable">Enable parent arrangement</button><button id="parent-pause" class="danger">Pause parent</button><button id="parent-unpause" class="secondary">Resume parent</button></div>
+      <div id="parent-info" class="meta" style="margin-top:12px">Parent arrangement not enabled. Default demo still works independently.</div>
+      <div class="budget"><div class="metric"><span id="parent-total-label">Parent illustrated credit</span><b id="parent-credit-view">—</b></div><div class="metric"><span>ONE shared financial hold total</span><b id="parent-held-view">—</b></div><div class="metric"><span id="parent-available-label">Illustrative available credit</span><b id="parent-available-view">—</b></div></div>
+
+      <p class="help">Use the Local tab for PostgreSQL balances and simulated network requests. Use the Lithic tab to link your existing sandbox account and run ASA callbacks. Both paths reuse these same agent permissions.</p>
+    </section>
+    <section class="card"><h2><span class="step">2</span> Register an agent + capture member's purpose</h2>
+      <p class="help">Member specifies a standing task scope, spending limits and approval threshold at enrollment. This is a <strong>delegation goal</strong>, not an individual payment authorization.</p>
+      <label for="purpose">Member-approved shopping purpose</label><select id="purpose"><option value="GROCERIES">Buy groceries</option><option value="TICKETS">Purchase event tickets</option></select>
+      <label for="purchase-goal">What may the agent purchase?</label><input id="purchase-goal" maxlength="240" value="Purchase weekly household groceries" />
+      <p class="help">Card limits in Step 2 are also registered as the maximum permitted delegation at enrollment. Only tighter limits can be issued later. Ed25519 private key stays in browser memory.</p>
+      <button id="register">Register agent + member's purchase scope</button><div id="agent-info" class="meta" style="margin-top:13px">No agent registered</div>
+    </section>
+    <section class="card"><h2><span class="step">3</span> Member delegates a virtual card</h2>
+      <div class="inputs"><div><label for="limit">Max transaction ($)</label><input id="limit" type="number" min="1" value="120" /></div><div><label for="budget">Total budget ($)</label><input id="budget" type="number" min="1" value="300" /></div><div><label for="threshold">Member approval above ($)</label><input id="threshold" type="number" min="1" value="80" /></div></div>
+      <label for="allowed">Allowed merchant</label><select id="allowed"><option value="GROCERY_101">Grocery demo store only</option><option value="TICKETS_303">Event ticket demo merchant</option><option value="ELECTRONICS_202">Electronics demo store (legacy scenarios)</option></select>
+      <div style="margin-top:13px"><button id="issue">Issue demo card + delegate</button></div><label for="active-card">Active delegated card (create more to show shared parent)</label><select id="active-card"><option value="">No cards</option></select><div id="card-info" class="meta" style="margin-top:11px">No card issued</div>
+    </section>
+    <section class="card"><h2><span class="step">4</span> Agent requests a signed payment intent</h2>
+      <p class="help"><strong>FLOW A ONLY — required before local or Lithic network authorization:</strong> The browser agent signs card, merchant, amount, timestamp and nonce. Occlet verifies its key and current delegated policy, and creates a short-lived READY intent or asks the member first.</p>
+      <div class="inputs" style="grid-template-columns:1fr 1fr"><div><label for="amount">Purchase amount ($)</label><input id="amount" type="number" min="0.01" step="0.01" value="20" /></div><div><label for="merchant">Merchant</label><select id="merchant"><option value="GROCERY_101">Grocery • GROCERY_101</option><option value="TICKETS_303">Tickets • TICKETS_303</option><option value="ELECTRONICS_202">Electronics • ELECTRONICS_202</option></select></div></div>
+      <div class="row" style="margin-top:14px"><button id="sign">Sign and request payment</button><button id="approval" class="secondary">Member approve</button><button id="replay" class="secondary">Replay signed request</button></div>
+      <div class="help">Flow A: try $20 (automatic), $75 (member approval), or $1,100 (over-limit when parent max is $1,000). Flow B skips this step entirely.</div>
+    </section>
+  </div>
+  <section id="panel-local" class="mode-panel" role="tabpanel" aria-labelledby="tab-local-button" tabindex="0">
+    <div class="grid">
+    <section class="card wide mode-intro"><div class="eyebrow">Local execution</div><h2>PostgreSQL + local authorization simulation</h2><p>Run the demo without Lithic access: initialize one shared SQL funding ledger, send either signed-intent or direct network messages, and inspect holds, settlement, or reversals. No live financial transfers occur.</p><div class="step-strip"><span>1 · Initialize SQL ledger</span><span>2 · Execute Flow A or B</span><span>3 · Inspect / clear holds</span></div></section>
+    <section class="card wide" style="border-color:#416c68"><h2><span class="step">L1</span> PostgreSQL ledger — demo financial authority</h2>
+      <p class="help"><strong>New:</strong> When Lithic Ledger is unavailable, Occlet owns the DEMO balance in PostgreSQL. This is <strong>one member funding arrangement</strong> with CASH, AVAILABLE, and AUTH_HOLDS accounts. The parent card and both agentic cards share this book; no child card gets independent funding. Lithic ASA remains a sandbox processor.</p>
+      <div class="row"><label for="local-opening">Opening demo funds ($)</label><input id="local-opening" type="number" value="500" min="1" step="0.01" style="width:135px"/><button id="local-ledger-init">Initialize demo ledger</button><button class="secondary" id="local-ledger-refresh">Refresh SQL balances and journals</button></div>
+      <div class="budget"><div class="metric"><span>Cash (simulated)</span><b id="sql-cash">—</b></div><div class="metric"><span>Available</span><b id="sql-available">—</b></div><div class="metric"><span>Authorization holds</span><b id="sql-held">—</b></div></div>
+      <p class="help">Initialize this ledger <strong>before</strong> authorizations. Then use shared Flow A with Local step L2, or Flow B with Local step L3. For Lithic ASA callbacks, references begin with <code>lithic:</code>; local network references begin with <code>local:</code>. All funds are synthetic.</p>
+      <div class="inputs" style="grid-template-columns:2fr 1fr"><div><label for="sql-auth-ref">Authorized reference</label><select id="sql-auth-ref"><option value="">No open authorizations</option></select></div><div><label for="sql-clear-amount">Clearing/settlement amount ($)</label><input id="sql-clear-amount" type="number" min="0.01" step=".01" value="20" /></div></div>
+      <div class="row" style="margin-top:12px"><button class="secondary" id="sql-clear">Clear + settle (demo)</button><button class="secondary" id="sql-release">Release hold / reversal</button><label for="sql-topup-amount">Synthetic top-up ($)</label><input id="sql-topup-amount" type="number" min="1" value="100" style="width:120px"/><button class="secondary" id="sql-topup">Add demo funds</button></div>
+
+      <div class="row" style="margin-top:14px"><button class="secondary" id="sql-check">Check SQL connection</button><button class="secondary" id="sql-registry">Inspect SQL arrangements</button></div>
+      <div id="sql-local-info" class="notice">PostgreSQL holds the local financial book and arrangement records for this demonstration. Use the buttons to inspect the database.</div>
+      <pre id="sql-ledger-journals" class="meta" style="white-space:pre-wrap;max-height:340px;overflow:auto">Local SQL ledger has not been initialized.</pre>
+      <p class="help"><strong>Demo boundary:</strong> Occlet's PostgreSQL ledger is authoritative only for this prototype. Lithic can still report a different financial result and does not reflect these SQL holds. Do not enroll production cards or expose the member/dashboard API to the internet.</p>
+    </section>
+    <section class="card"><h2><span class="step">L2</span> Local signed-intent network authorization</h2>
+      <p class="help">This is a separate network-message simulator. It sends a one-time credential handle, merchant and amount — <strong>not</strong> the agent ID or payment-intent ID.</p>
+      <div class="row"><button id="authorize">Send network authorization</button><button class="secondary" id="mismatch">Send mismatched merchant</button><button class="danger" id="revoke">Member revoke card</button></div>
+      <div id="payment-info" class="meta" style="margin-top:14px">No payment intent yet</div>
+      <div class="budget"><div class="metric"><span>Budget</span><b id="budget-total">—</b></div><div class="metric"><span>Reserved</span><b id="reserved">—</b></div><div class="metric"><span>Authorized</span><b id="spent">—</b></div><div class="metric"><span>Available</span><b id="remaining">—</b></div></div>
+    </section>
+    <section class="card wide" style="border-color:#6b5d43"><h2><span class="step">L3</span> Local network-direct authorization (Flow B)</h2>
+      <p class="help">Use a <strong>CARD_BOUND_NETWORK</strong> delegated card from Steps 1–2. This request intentionally contains only card reference, merchant, amount and transaction reference. It does not transmit an agent identifier, key signature, or payment intent. The issuer resolves the registered agent from the card-to-delegation mapping.</p>
+      <div class="row"><button id="direct-local">Send network-only auth (local simulation)</button><button id="direct-over" class="secondary">Test above auto-approval threshold</button><button id="direct-unknown" class="danger">Test unknown card</button></div>
+      <div id="direct-info" class="notice">Flow B approval is weaker evidence: owning the card credentials is not proof that the registered agent initiated the payment. Amounts above the auto-approval threshold decline; the network callback cannot await member approval.</div>
+    </section>
+    <section class="card wide"><h2><span class="step">L4</span> Optional: Capital One manual checkout handoff</h2>
+      <p class="help">Use <strong>Capital One reference only</strong> — no PAN, CVV, expiry, or Capital One login details. This is Occlet's pre-payment agent policy gate, not issuer authorization. You choose the checkout website; only its approved hostname can be opened through this path.</p>
+      <button class="secondary" id="preset">Apply Capital One policy: $23.99 auto / $24–$25 step-up / >$25 decline</button>
+      <div class="inputs" style="grid-template-columns:1fr 2fr"><div><label for="external-last4">Virtual card last four only</label><input id="external-last4" inputmode="numeric" maxlength="4" placeholder="1234" autocomplete="off" /></div>
+        <div><label for="external-url">Merchant website (HTTPS)</label><input id="external-url" value="https://www.target.com/" placeholder="https://www.target.com/" autocomplete="off" /></div></div>
+      <p class="help">GROCERY_101 maps to target.com; ELECTRONICS_202 maps to bestbuy.com for this local proof of concept. The website does not attest to the final cart or merchant network ID.</p>
+      <div class="row"><button id="external-link">Bind external card reference</button><button class="secondary" id="scenario-approved">Try $23.99</button><button class="secondary" id="scenario-stepup">Try $24.50</button><button class="secondary" id="scenario-declined">Try $25.01</button><button class="danger" id="scenario-unauthorized">Try unknown agent</button></div>
+      <div class="row" style="margin-top:12px"><button id="external-handoff">Request real merchant checkout handoff</button><a id="checkout-link" href="#" target="_blank" rel="noopener noreferrer" style="display:none;color:#45dec2">Open verified merchant site to complete purchase manually</a></div>
+      <div id="external-info" class="notice">Start with agent registration, then apply the Capital One policy and issue the delegated demo card. Link only the virtual card's last four digits.</div>
+      <p class="help"><strong>Important:</strong> An authorized $23.99 request only enables checkout. The final real charge must be verified at the merchant; Capital One can still approve or reject independently. If an agent already has the card credentials, it can bypass this gate entirely.</p>
+    </section>
+    </div>
+  </section>
+  <section id="panel-lithic" class="mode-panel" role="tabpanel" aria-labelledby="tab-lithic-button" tabindex="0" hidden>
+    <div class="grid">
+    <section class="card wide mode-intro"><div class="eyebrow">External sandbox execution</div><h2>Lithic cards + authorization callback</h2><p>Connect a sandbox parent card, create an agent card under the same Lithic account, and simulate authorizations through Lithic ASA. In Flow A, submit the signed intent in shared Step 4 before testing here.</p><div class="step-strip"><span>1 · Link parent account</span><span>2 · Issue / test agent card</span><span>3 · Inspect ASA and ledger access</span></div></section>
+    <section class="card wide"><h2><span class="step">S1</span> Connect a Lithic sandbox parent card</h2>
+      <p class="help">Reuse an existing <strong>sandbox</strong> parent card by entering its account token and card token (UUIDs only, never PAN/CVV). Or issue a new test parent card. The agent cards must share the same Lithic account token.</p>
+      <div class="row"><button id="parent-create" class="secondary">Create new Lithic parent test card</button></div>
+      <div class="row" style="margin-top:12px"><label for="lithic-existing-account">Existing Lithic account token</label><input id="lithic-existing-account" placeholder="UUID from your sandbox" style="width:310px" autocomplete="off"/><label for="lithic-existing-parent">Existing parent card token</label><input id="lithic-existing-parent" placeholder="UUID (not PAN)" style="width:310px" autocomplete="off"/><button id="lithic-link-existing" class="secondary">Link existing parent card</button></div>
+      <p class="help">Optionally send a parent-card test authorization through Lithic. It exercises the parent account without creating an agent payment intent.</p>
+      <div class="row" style="margin-top:12px"><label for="parent-auth-amount">Parent-card purchase ($)</label><input style="width:120px" id="parent-auth-amount" type="number" value="40" step=".01" min=".01"/><button class="secondary" id="parent-simulate">Simulate parent card purchase in Lithic</button></div>
+    </section>
+    <section class="card wide"><h2><span class="step">S2</span> Lithic virtual card + ASA authorization</h2>
+      <p class="help">Create a Lithic test card and use the <strong>same</strong> sandbox simulator for both flows. <strong>Flow A:</strong> create a signed READY intent in shared Step 4 first. <strong>Flow B:</strong> skip Step 3 and send the transaction directly. Lithic's ASA request has no signed agent proof; Occlet uses the card's preconfigured flow to choose the policy.</p>
+      <div class="row"><button id="lithic-create">Create Lithic agent card (same account)</button><button id="lithic-authorize" class="secondary">Send to Lithic sandbox</button><button id="lithic-result" class="secondary">Check last Lithic result</button><button id="native-preview" class="secondary">Preview Lithic native rules</button><button id="native-drafts" class="secondary">Create inactive rule drafts</button></div>
+      <pre id="native-rule-info" class="meta" style="white-space:pre-wrap;max-height:220px;overflow:auto"></pre>
+      <div id="lithic-info" class="meta" style="margin-top:13px">Not linked. Configure LITHIC_API_KEY on the local server first; see README.</div>
+      <p class="help">The real Lithic simulation uses test cards and sandbox-generated authorization callbacks, not a live card network. In Flow A, card + merchant + amount match a unique approved intent, which is still not cryptographic network-carried intent binding. In Flow B, the card token is attributed to an agent without purchase-time agent authentication.</p>
+    </section>
+    <section class="card wide"><h2><span class="step">S3</span> Optional: Lithic financial-ledger discovery</h2>
+      <p class="help">These controls inspect Lithic’s <strong>optional ISSUING financial-account product</strong>. The current demo uses PostgreSQL for its local financial book. Lithic card issuance and ASA can still work when Lithic Ledger is unavailable.</p>
+      <div class="row"><button id="ledger-discover" class="secondary">Discover Lithic ISSUING account</button><button id="ledger-diagnose" class="secondary">Diagnose Lithic access</button><button class="secondary" id="ledger-balance">Refresh Lithic ledger balance</button><button id="ledger-activate" class="secondary">Use Lithic ledger mode</button></div>
+      <div id="ledger-info" class="notice">Create the parent Lithic test card first. Discover its ISSUING financial account to check whether Lithic Ledger is available in this sandbox.</div>
+      <p class="help"><strong>Ledger mode safeguard:</strong> The activation button works only after linking an ISSUING account and setting <code>LITHIC_AUTH_FROM_BALANCE_CONFIRMED=1</code> after confirmation from Lithic. In that mode the local issuer simulator is disabled; test through real Lithic sandbox ASA.</p>
+    </section>
+    </div>
+  </section>
+  <section id="panel-w4" class="mode-panel" role="tabpanel" aria-labelledby="tab-w4-button" tabindex="0" hidden>
+    <div class="grid">
+      <section class="card wide mode-intro">
+        <div class="eyebrow">Q Delegated Card · member-first protection · W4</div>
+        <h2>W4 — Member's own grocery purchase, trip protection YIELD OFF</h2>
+        <p>The member has <strong>$500</strong> in one spending account. The member protected <strong>$300</strong> for a future trip, with <code>yield=false</code>. A <strong>$350</strong> purchase on their OWN parent card would leave only $150, violating the trip protection. Q must decline with <code>PROTECTED_BY_MEMBER</code> even though the actual account holds $500.</p>
+        <div class="step-strip"><span>1 · Protected $300 ≠ ledger hold</span><span>2 · Decline $350</span><span>3 · Release $150 permission</span><span>4 · Retry + single $350 hold</span><span>5 · Clear / reverse</span></div>
+      </section>
+      <section class="card wide"><h2><span class="step">W1</span> Initialize isolated W4 scenario</h2>
+        <p class="help">Creates a fresh <strong>single</strong> parent funding arrangement with $500 of <em>synthetic</em> PostgreSQL funds and a $300 protected trip intent (yield disabled). Starting W4 clears the prior in-memory agent flow state, but preserves an already-linked Lithic sandbox parent card. It never creates a financial account for the trip.</p>
+        <div class="row"><button id="w4-start">Start fresh W4 ($500 / $300 protected)</button><button id="w4-refresh" class="secondary">Refresh SQL and event history</button></div>
+        <div class="budget">
+          <div class="metric"><span>Cash in shared parent ledger</span><b id="w4-cash">—</b></div>
+          <div class="metric"><span>Trip protection (registry)</span><b id="w4-protected">—</b></div>
+          <div class="metric"><span>Free room for groceries</span><b id="w4-room">—</b></div>
+          <div class="metric"><span>Financial hold</span><b id="w4-hold">—</b></div>
+        </div>
+        <div class="notice" id="w4-status">Not initialized. Requires Docker PostgreSQL + DATABASE_URL. This tab never calls Lithic automatically.</div>
+      </section>
+      <section class="card wide"><h2><span class="step">W2</span> Demonstrate decline → member permission → retry</h2>
+        <p class="help"><strong>Layer 1:</strong> $350 grocery charge, available $500, protected $300, room $200 → <code>PROTECTED_BY_MEMBER</code>. Member releases only $150 of *permission*; cash does not change. On retry, one $350 financial hold is placed on the parent arrangement.</p>
+        <div class="row"><button id="w4-decline" class="danger">1 · Attempt $350 groceries</button><button id="w4-release" class="secondary">2 · Member releases $150 trip protection</button><button id="w4-retry">3 · Retry $350 purchase</button></div>
+        <div id="w4-decision" class="notice">The first $350 attempt should be declined even though the financial balance is $500.</div>
+        <div class="row" style="margin-top:12px"><button id="w4-clear" class="secondary">4 · Settle $345 (release unused $5)</button><button id="w4-reverse" class="secondary">Alternative: reverse $350 hold</button></div>
+      </section>
+      <section class="card wide"><h2><span class="step">W3</span> Same W4 using Lithic ASA and signed clearing events</h2>
+        <p class="help">First link your existing Lithic sandbox PARENT card from the Lithic tab. The simulator sends the $350 card authorization to Occlet ASA; the same PostgreSQL W4 rule runs. After releasing protection, retry the Lithic simulation to approve and reserve once.</p>
+        <div class="row"><button id="w4-lithic-attempt" class="secondary">Send $350 parent card to Lithic</button><button id="w4-lithic-result" class="secondary">Check last Lithic transaction</button></div>
+        <div class="notice" id="w4-lithic-info">No Lithic transaction attempted. Signed <code>card_transaction.updated</code> events are received on port 8001 at <code>/lithic/events</code> when an Events API subscription and secret are configured. An event confirms a hold, clears it, or releases it—never creates a duplicate.</div>
+        <p class="help">Safety: real Lithic settlement callbacks require sandbox subscription and HMAC verification. Partial captures, force-posts, returns and settlement greater than the hold are intentionally not auto-posted by this simplified demo.</p>
+      </section>
+      <section class="card wide"><h2><span class="step">W4</span> Authorization decisions and financial evidence</h2>
+        <p class="help">W4 records policy changes separately from balanced financial journal entries. A rejected attempt makes <em>no</em> money posting. The member's $150 release makes <em>no</em> financial posting either.</p>
+        <pre id="w4-history" class="meta" style="max-height:450px;overflow:auto;white-space:pre-wrap">No W4 evidence yet.</pre>
+      </section>
+    </div>
+  </section>
+  <div class="grid common-output">
+    <section class="card wide"><div class="split"><h2>Latest decision / API result</h2><button id="reset" class="secondary">Reset lab</button></div><div id="notice" class="notice">Start by registering an agent. The decision trace will show server-side verification and authorization outcomes.</div></section>
+    <section class="card wide"><h2>Flow comparison — latest authorization evidence</h2><p class="help">Shows which evidence was available when the issuer responded. The payment decision is separate from the local simulated funding hold.</p><div id="auth-traces" class="events" style="max-height:310px">No authorizations yet.</div></section>
+    <section class="card wide"><h2>Audit and transaction activity</h2><div class="eyebrow" style="margin-bottom:8px">Generated by the server • newest first</div><div id="events" class="events"><p>Nothing yet.</p></div></section>
+  </div>
+  <p style="font-size:11px;margin-top:18px">Not PCI compliant or production-ready. Member approval endpoints have no production authentication. Optional Lithic authorizations are sandbox-only, not live network traffic, and no funds move.</p>
+</div>
+<script>
+  // Presentation-only mode tabs: do not modify financial authority or authorize transactions.
+  const tabControls=[...document.querySelectorAll('[role="tab"][data-tab]')];
+  const tabModes=['local','lithic','w4'];
+  function openModeTab(mode, updateHash=true){
+    const chosen=tabModes.includes(mode)?mode:'local';
+    for(const tab of tabControls){const selected=tab.dataset.tab===chosen;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;tab.classList.toggle('active',selected)}
+    for(const value of tabModes){document.getElementById('panel-'+value).hidden=value!==chosen}
+    document.getElementById('shared-heading').hidden=chosen==='w4';
+    document.getElementById('shared-config').hidden=chosen==='w4';
+    if(updateHash&&location.hash!=='#'+chosen)history.replaceState(null,'','#'+chosen);
+  }
+  for(const [i,tab] of tabControls.entries()){ 
+    tab.addEventListener('click',()=>openModeTab(tab.dataset.tab));
+    tab.addEventListener('keydown',event=>{
+      if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+      event.preventDefault();
+      const target=event.key==='Home'?0:event.key==='End'?tabControls.length-1:(i+(event.key==='ArrowRight'?1:-1)+tabControls.length)%tabControls.length;
+      openModeTab(tabControls[target].dataset.tab);tabControls[target].focus();
+    });
+  }
+  window.addEventListener('hashchange',()=>openModeTab(location.hash.slice(1),false));
+  openModeTab(location.hash.slice(1),false);
+  let keys=null, agentId=null, card=null, lastSigned=null, lastIntent=null, lastToken=null, lastMerchant=null, lastAmount=null;
+  let registeredScope=null;
+  const $=id=>document.getElementById(id);
+  const money=c=>c==null?'—':'$'+(c/100).toFixed(2);
+  const b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+  function display(text,ok=true){const el=$('notice');el.textContent=text;el.className='notice '+(ok?'ok':'bad')}
+  async function api(path, data){const r=await fetch(path,{method:data===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},...(data!==undefined?{body:JSON.stringify(data)}:{})}); const out=await r.json();if(!r.ok)throw new Error(out.detail||JSON.stringify(out));return out}
+  async function run(fn){for(const button of document.querySelectorAll('button'))button.disabled=true;try{await fn()}catch(e){display('DECLINED / ERROR\n'+e.message,false)}finally{for(const button of document.querySelectorAll('button'))button.disabled=false;await refresh()}}
+  let lastLithicTransaction=null;
+  async function refresh(){const state=await api('/api/state');const pa=state.parent;
+    const chosen=$('active-card');const desired=card?.id||chosen.value;
+    chosen.replaceChildren();for(const c of state.cards){const o=document.createElement('option');o.value=c.id;o.textContent=c.alias+' • '+c.agent_id+' • '+(c.authorization_flow==='CARD_BOUND_NETWORK'?'NETWORK-DIRECT':'SIGNED-INTENT')+' • '+(c.lithic_card_token?'Lithic-linked':'local only');chosen.appendChild(o)}
+    if(state.cards.some(c=>c.id===desired))chosen.value=desired;else if(state.cards.length&& !card)card=state.cards[0];
+
+    $('parent-info').textContent=pa.enabled?`Parent ${pa.id} • ${pa.status} • Lithic account: ${pa.lithic_account_token||'not linked'} • Parent card: ${pa.lithic_parent_card_token||'not issued'} • mode: ${pa.ledger_mode||'DEMO_MIRROR'} • ${pa.ledger_mode==='LITHIC_LEDGER'?'funds held at Lithic':pa.ledger_mode==='OCCLET_SQL_LEDGER'?'holds stored in PostgreSQL':pa.hold_count+' local illustrative holds'}`:'Parent arrangement not enabled.';
+    $('parent-total-label').textContent=pa.ledger_mode==='OCCLET_SQL_LEDGER'?'Shared SQL book cash':pa.ledger_mode==='LITHIC_LEDGER'?'Lithic available':'Parent illustrated credit';
+    $('parent-available-label').textContent=pa.ledger_mode==='OCCLET_SQL_LEDGER'?'SQL authoritative available':pa.ledger_mode==='LITHIC_LEDGER'?'Lithic last observed':'Illustrative available credit';
+    for(const [id,cents] of [['parent-credit-view',pa.ledger_mode==='LITHIC_LEDGER'?null:(pa.ledger_mode==='OCCLET_SQL_LEDGER'?pa.cash_cents:pa.credit_limit_cents)],['parent-held-view',pa.ledger_mode==='LITHIC_LEDGER'?null:pa.held_cents],['parent-available-view',pa.available_cents]])$(id).textContent=pa.enabled?money(cents):'—';
+    const current=state.cards.find(c=>c.id===card?.id);if(current){card=current;$('card-info').textContent=`${current.alias} • ${current.status} • ${current.authorization_flow} • purpose ${current.purpose||'legacy'} • agent ${current.agent_id} • ${current.allowed_merchants.join(', ')}${current.lithic_card_token?' • LITHIC TEST CONNECTED':''}`;['budget-total','reserved','spent','remaining'].forEach((id,i)=>$(id).textContent=money([current.budget_cents,current.reserved_cents,current.spent_cents,current.remaining_cents][i]));}
+    const traceBox=$('auth-traces');traceBox.replaceChildren();
+    if(!state.authorization_traces?.length){traceBox.textContent='No authorizations yet.';}
+    for(const t of (state.authorization_traces||[])){
+      const el=document.createElement('div');el.className='event';el.style.gridTemplateColumns='165px 170px 1fr';
+      const source=document.createElement('span');source.className='meta';source.textContent=t.source;
+      const decision=document.createElement('strong');decision.style.color=t.decision==='APPROVED'?'var(--teal)':'var(--red)';decision.textContent=t.decision;
+      const detail=document.createElement('span');detail.className='details';
+      const mode=t.mode==='SIGNED_INTENT_REQUIRED'?'A / SIGNED INTENT':t.mode==='CARD_BOUND_NETWORK'?'B / CARD BINDING':'PARENT CARD';
+      detail.textContent=`${mode} • agent ${t.agent_id||'n/a'} • ${t.merchant_id} • ${money(t.amount_cents)} • intent ${t.payment_intent_id||'NONE'} • ${t.reason}`;
+      if(t.warning){const warning=document.createElement('div');warning.style.color='var(--amber)';warning.textContent=t.warning;detail.appendChild(warning)}
+      el.append(source,decision,detail);traceBox.appendChild(el);
+    }
+    const container=$('events');container.replaceChildren();if(!state.events.length){container.textContent='No activity';return;}for(const ev of state.events){const row=document.createElement('div');row.className='event';const t=document.createElement('span');t.className='meta';t.textContent=ev.at;const a=document.createElement('strong');a.textContent=ev.action;const d=document.createElement('span');d.className='details';const result=document.createElement('span');result.className=ev.result==='DECLINED'?'decline':'outcome';result.textContent=ev.result+'  ';d.append(result,document.createTextNode(ev.details));row.append(t,a,d);container.append(row);}}
+  $('parent-enable').addEventListener('click',()=>run(async()=>{const cents=id=>Math.round(Number($(id).value)*100);const r=await api('/api/member/parent/configure',{credit_limit_cents:cents('parent-credit'),max_transaction_cents:cents('parent-max'),monthly_policy_limit_cents:cents('parent-monthly')});$('limit').value='1000';$('budget').value='200';$('threshold').value='25';display('Parent model enabled: shared funding source, inherited rules, and one financial hold per approved transaction. Agent card defaults set to $1,000 max / $200 delegated budget / $25 member step-up. These local credits are illustrative ONLY.') }));
+  $('parent-create').addEventListener('click',()=>run(async()=>{const r=await api('/api/member/parent/lithic/create',{});display('Lithic PARENT TEST CARD created. All new agentic cards will be created using the SAME Lithic account token: '+r.account_token)}));
+  $('sql-check').addEventListener('click',()=>run(async()=>{const r=await api('/api/sql/status');$('sql-local-info').textContent='SQL: '+(r.connected?'CONNECTED':r.configured?'CONFIGURED / OFFLINE':'NOT CONFIGURED')+' • Local SQL stores arrangements and the demo-only financial ledger';display('PostgreSQL status checked.')}));
+  $('sql-registry').addEventListener('click',()=>run(async()=>{const r=await api('/api/sql/registry');$('sql-local-info').textContent=JSON.stringify(r.tables,null,2);display('Read Occlet arrangements and delegation state from PostgreSQL; local ledger journals are listed separately below.')}));
+  $('ledger-discover').addEventListener('click',()=>run(async()=>{const r=await api('/api/lithic/ledger/discover');if(!r.ledger_provisioned){$('ledger-info').textContent='No ISSUING account returned for this parent. This can mean card-only onboarding or no Ledger-enabled program. Click Diagnose Lithic access to see account and program responses.';return;}
+    const a=r.issuing_financial_accounts.find(x=>x.status==='OPEN');if(!a)throw Error('No OPEN ISSUING financial account on this parent account');await api('/api/lithic/ledger/link',{financial_account_token:a.token});$('ledger-info').textContent=`LINKED: ${a.token} • Lithic account ${r.lithic_account_token} • This is a read-only link until you activate ledger mode`;display('ISSUING Financial Account verified and linked to the same parent Lithic account.')}));
+  $('ledger-diagnose').addEventListener('click',()=>run(async()=>{const r=await api('/api/lithic/ledger/diagnose');$('ledger-info').textContent=JSON.stringify(r,null,2);display('Lithic account and program-level access checks complete. No API key or financial account details displayed.')}));
+  $('ledger-balance').addEventListener('click',()=>run(async()=>{const r=await api('/api/lithic/ledger/balance');const b=r.balance;$('ledger-info').textContent=`LITHIC LEDGER • ${b.type} • ${b.currency} • available=${money(b.available_amount)} • pending=${money(b.pending_amount)} • total=${money(b.total_amount)} • last updated=${b.updated||'unknown'} • Financial Account: ${b.token}. Credit accounts use different balance semantics.`;display('Balance was fetched from Lithic, not the local demo ledger.')}));
+  $('ledger-activate').addEventListener('click',()=>run(async()=>{const r=await api('/api/lithic/ledger/activate',{});$('ledger-info').textContent='LITHIC_LEDGER MODE ON • Lithic owns monetary balances and holds; local SQL stores policy/identity. Local network simulator disabled; use Lithic ASA.';display('Ledger-backed mode activated. Lithic must enforce balance checks before invoking ASA.')}));
+  async function loadDemoLedger(){
+    const b=await api('/api/demo-ledger/balance');
+    $('sql-cash').textContent=money(b.cash_cents);$('sql-available').textContent=money(b.available_cents);$('sql-held').textContent=money(b.held_cents);
+    const sel=$('sql-auth-ref');const old=sel.value;sel.replaceChildren();
+    for(const a of b.authorizations.filter(x=>x.status==='AUTHORIZED')){
+      const o=document.createElement('option');o.value=a.reference;o.textContent=`${a.reference} • ${money(a.amount_cents)} • ${a.merchant}`;o.dataset.amount=a.amount_cents;sel.appendChild(o);
+    }
+    if(sel.options.length===0){const o=document.createElement('option');o.textContent='No open authorizations';o.value='';sel.appendChild(o)}
+    if([...sel.options].some(o=>o.value===old))sel.value=old;
+    if(sel.selectedOptions[0]?.dataset.amount)$('sql-clear-amount').value=(Number(sel.selectedOptions[0].dataset.amount)/100).toFixed(2);
+    $('sql-ledger-journals').textContent=JSON.stringify({ledger_authority:b.authoritative_for,authorizations:b.authorizations,journal_lines:b.journal_lines},null,2);
+    return b;
+  }
+  $('local-ledger-init').addEventListener('click',()=>run(async()=>{
+    const r=await api('/api/demo-ledger/initialize',{opening_balance_cents:Math.round(Number($('local-opening').value)*100)});
+    await loadDemoLedger();display('OCCLET_SQL_LEDGER active. Shared parent funds are PostgreSQL-backed; Lithic card processing remains sandbox only.');
+  }));
+  $('local-ledger-refresh').addEventListener('click',()=>run(async()=>{await loadDemoLedger();display('Read shared cash, available, holds, and balanced ledger journal lines from PostgreSQL.')}));
+  $('sql-auth-ref').addEventListener('change',()=>{const x=$('sql-auth-ref').selectedOptions[0];if(x?.dataset.amount)$('sql-clear-amount').value=(Number(x.dataset.amount)/100).toFixed(2)});
+  $('sql-clear').addEventListener('click',()=>run(async()=>{const ref=$('sql-auth-ref').value;if(!ref)throw Error('Select an open authorization');const cents=Math.round(Number($('sql-clear-amount').value)*100);await api('/api/demo-ledger/clear',{authorization_ref:ref,settled_cents:cents});await loadDemoLedger();display('Clearing settled and unused hold released against ONE parent ledger.')}));
+  $('sql-release').addEventListener('click',()=>run(async()=>{const ref=$('sql-auth-ref').value;if(!ref)throw Error('Select an open authorization');await api('/api/demo-ledger/release',{authorization_ref:ref});await loadDemoLedger();display('Authorization hold fully released to member available funds.')}));
+  $('sql-topup').addEventListener('click',()=>run(async()=>{const cents=Math.round(Number($('sql-topup-amount').value)*100);await api('/api/demo-ledger/topup',{amount_cents:cents,reference:crypto.randomUUID()});await loadDemoLedger();display('Added synthetic funds in PostgreSQL. Does not affect Lithic real balances.')}));
+  $('lithic-link-existing').addEventListener('click',()=>run(async()=>{const r=await api('/api/member/parent/lithic/link-existing',{account_token:$('lithic-existing-account').value.trim(),card_token:$('lithic-existing-parent').value.trim()});display('Verified existing Lithic parent card ending '+r.last_four+' and linked it. PAN/CVV not stored.');}));
+  for(const [id,status] of [['parent-pause','PAUSED'],['parent-unpause','ACTIVE']])$(id).addEventListener('click',()=>run(async()=>{await api('/api/member/parent/status',{status});display('Parent funding arrangement '+status+'. Applies to all its virtual cards at the Occlet authorization boundary.')}));
+  $('parent-simulate').addEventListener('click',()=>run(async()=>{const cents=Math.round(Number($('parent-auth-amount').value)*100);const r=await api('/api/member/parent/lithic/simulate',{merchant_id:'GROCERY_101',amount_cents:cents});display('Parent-card Lithic sandbox authorization submitted, token '+(r.transaction_token||'pending')+'. Inspect ASA audit and shared parent hold.')}));
+  $('native-preview').addEventListener('click',()=>run(async()=>{if(!card)throw Error('Issue an agent card first');const r=await api('/api/lithic/rules/preview?card_id='+encodeURIComponent(card.id));$('native-rule-info').textContent=JSON.stringify(r.rules,null,2);display('Four Lithic V2 Auth Rules generated for this exact account and card. PREVIEW ONLY; no rule has been created or activated.')}));
+  $('native-drafts').addEventListener('click',()=>run(async()=>{if(!card)throw Error('Issue agent card first');if(!confirm('Create four INACTIVE shadow-mode rules in your LITHIC SANDBOX? This writes drafts but does NOT promote them.'))return;const r=await api('/api/lithic/rules/create-drafts?card_id='+encodeURIComponent(card.id),{});$('native-rule-info').textContent=JSON.stringify(r.drafts,null,2);display('Created '+r.drafts.length+' inactive Lithic sandbox draft rules. To activate any, review and promote using Lithic Dashboard.')}));
+  $('active-card').addEventListener('change',()=>run(async()=>{const s=await api('/api/state');card=s.cards.find(c=>c.id===$('active-card').value)||null;lastIntent=lastToken=lastMerchant=lastAmount=null;display('Selected '+(card?.alias||'no card')+'. Agent authorization will be evaluated against this card and the SAME parent funding arrangement.')}));
+  function flowDescription(){
+    const signed=$('flow-type').value==='SIGNED_INTENT_REQUIRED';
+    $('flow-description').textContent=signed
+      ? 'FLOW A: enrolled purpose + signed purchase intent + optional member approval BEFORE a separate network authorization. A missing READY intent declines.'
+      : 'FLOW B: enrolled purpose + card credential binding only. Network authorization identifies the assigned agent from the card, but no agent proof or purchase-time intent is transmitted. Above the auto-limit: decline.';
+  }
+  $('flow-type').addEventListener('change',flowDescription);flowDescription();
+  $('purpose').addEventListener('change',()=>{
+    const ticket=$('purpose').value==='TICKETS';
+    $('purchase-goal').value=ticket?'Purchase event tickets within my approved budget':'Purchase weekly household groceries';
+    $('allowed').value=ticket?'TICKETS_303':'GROCERY_101';
+    $('merchant').value=$('allowed').value;
+    $('amount').value=ticket?'75':'20';
+  });
+  $('register').addEventListener('click',()=>run(async()=>{
+    if(!crypto?.subtle)throw Error('WebCrypto requires localhost or HTTPS.');
+    const cents=id=>Math.round(Number($(id).value)*100);
+    const scope={purpose:$('purpose').value,purchase_goal:$('purchase-goal').value.trim(),
+      registered_per_transaction_cents:cents('limit'),registered_budget_cents:cents('budget'),
+      registered_approval_threshold_cents:cents('threshold')};
+    if(!scope.purchase_goal)throw Error('Enter an intended purchase purpose before registering the agent.');
+    keys=await crypto.subtle.generateKey({name:'Ed25519'},false,['sign','verify']);
+    const pub=await crypto.subtle.exportKey('raw',keys.publicKey);
+    agentId='agent-'+crypto.randomUUID().slice(0,8);
+    const out=await api('/api/agents',{agent_id:agentId,name:`Occlet ${scope.purpose==='TICKETS'?'Ticket':'Grocery'} Shopping Agent`,public_key_b64:b64(pub),...scope});
+    registeredScope=out;
+    $('allowed').value=scope.purpose==='TICKETS'?'TICKETS_303':'GROCERY_101';
+    $('merchant').value=$('allowed').value;
+    $('agent-info').textContent=`${agentId} • ${scope.purpose} • ${out.purchase_goal} • registered max ${money(scope.registered_per_transaction_cents)} / budget ${money(scope.registered_budget_cents)} / auto ≤ ${money(scope.registered_approval_threshold_cents)} • key ${out.key_fingerprint}`;
+    display(`MEMBER PURPOSE CAPTURED: ${out.purchase_goal}. Registered limits are now immutable in this demo. Ed25519 private key remains in browser memory.`);
+  }));
+  $('issue').addEventListener('click',()=>run(async()=>{
+    if(!agentId||!registeredScope)throw Error('Register the member-approved agent purpose first');
+    const cents=id=>Math.round(Number($(id).value)*100);
+    card=await api('/api/member/cards',{agent_id:agentId,authorization_flow:$('flow-type').value,
+      per_transaction_cents:cents('limit'),budget_cents:cents('budget'),approval_threshold_cents:cents('threshold'),allowed_merchants:[$('allowed').value]});
+    lastIntent=lastToken=lastMerchant=lastAmount=null;
+    display(`Issued ${card.alias}: ${card.authorization_flow}. Agent ${card.agent_id} is restricted to ${card.purpose} with ${money(card.per_transaction_cents)} per purchase. All funds come from the shared parent account.`);
+  }));
+  $('sign').addEventListener('click',()=>run(async()=>{if(!keys||!card)throw Error('Register an agent and issue a card first');const amount=Math.round(Number($('amount').value)*100), merchant=$('merchant').value;if(!Number.isInteger(amount)||amount<=0)throw Error('Enter a positive amount');const payload={agent_id:agentId,card_id:card.id,merchant_id:merchant,amount_cents:amount,currency:'USD',nonce:crypto.randomUUID(),timestamp_ms:Date.now()};const msg=[payload.agent_id,payload.card_id,payload.merchant_id,payload.amount_cents,payload.currency,payload.nonce,payload.timestamp_ms].join('|');const sig=await crypto.subtle.sign('Ed25519',keys.privateKey,new TextEncoder().encode(msg));lastSigned={...payload,signature_b64:b64(sig)};lastIntent=null;lastToken=null;$('checkout-link').style.display='none';const r=await api('/api/agent/intents',lastSigned);lastIntent=r.intent_id;lastToken=r.payment_token||null;lastMerchant=merchant;lastAmount=amount;$('payment-info').textContent=`Intent ${lastIntent} • ${r.status} • ${lastToken?'one-time credential issued':'awaiting member approval'}`;display(`${r.status}: signature verified; policy accepted; ${money(amount)} at ${merchant}.\n${lastToken?'Ready for network authorization.':'Member must approve before a credential is released.'}`)}));
+  $('approval').addEventListener('click',()=>run(async()=>{if(!lastIntent)throw Error('Create a payment intent first');const r=await api(`/api/member/intents/${lastIntent}/approval`,{approved:true});lastToken=r.payment_token||null;$('payment-info').textContent=`Intent ${lastIntent} • ${r.status} • ${lastToken?'credential released':''}`;display('Member approved the agent payment. A one-time payment handle is now available.')}));
+  $('authorize').addEventListener('click',()=>run(async()=>{if(!lastToken)throw Error('No ready intent: request payment and obtain member approval if needed');const ref='rrn_'+crypto.randomUUID();const r=await api('/api/network/authorize',{payment_token:lastToken,merchant_id:lastMerchant,amount_cents:lastAmount,network_reference:ref});$('payment-info').textContent=`${r.decision} • ${r.authorization_id} • matched ${r.matched_intent_id}`;display(`SIMULATED ISSUER ${r.decision}\nNetwork reference ${ref}\nMapped one-time credential → ${r.matched_intent_id}.\nAgent ID was not included in this network message.`)}));
+  $('mismatch').addEventListener('click',()=>run(async()=>{if(!lastToken)throw Error('Create a ready payment intent first');const wrong=lastMerchant==='GROCERY_101'?'ELECTRONICS_202':'GROCERY_101';await api('/api/network/authorize',{payment_token:lastToken,merchant_id:wrong,amount_cents:lastAmount,network_reference:'rrn_'+crypto.randomUUID()});display('Unexpected authorization success',false)}));
+  $('lithic-create').addEventListener('click',()=>run(async()=>{if(!card)throw Error('Create a delegated demo card first');const r=await api(`/api/member/cards/${card.id}/lithic/create`,{});$('lithic-info').textContent=`Sandbox card ${r.card_token} • account ${r.account_token} • last four ${r.last_four||'****'} • linked to ${card.alias}`;display('Lithic sandbox virtual card linked. This card is test-only.')}));
+  $('lithic-authorize').addEventListener('click',()=>run(async()=>{
+    if(!card?.lithic_card_token)throw Error('Create a Lithic sandbox card first');
+    const signed=card.authorization_flow!=='CARD_BOUND_NETWORK';
+    if(signed&&!lastIntent)throw Error('Flow A requires a signed READY payment intent from Step 3 first');
+    const amount=signed?lastAmount:Math.round(Number($('amount').value)*100);
+    const merchant=signed?lastMerchant:$('merchant').value;
+    if(!amount||!merchant)throw Error('Enter amount and merchant');
+    const r=await api('/api/lithic/simulate',{card_id:card.id,amount_cents:amount,merchant_id:merchant});
+    lastLithicTransaction=r.transaction_token||null;
+    $('lithic-info').textContent=`${signed?'FLOW A':'FLOW B'} • Lithic simulation ${r.transaction_token||'(no token)'} • inspect authorization evidence and result`;
+    display(signed?'FLOW A: Lithic sandbox authorization submitted. ASA must match an already-approved signed intent.':
+      'FLOW B: Lithic sandbox authorization submitted WITHOUT signing a purchase intent. ASA will infer registered agent from card token; approval is bounded by automatic policy limits.');
+  }));
+  $('lithic-result').addEventListener('click',()=>run(async()=>{if(!lastLithicTransaction)throw Error('Simulate a Lithic agent card transaction first');const r=await api('/api/lithic/transactions/'+encodeURIComponent(lastLithicTransaction));$('lithic-info').textContent='RESULT '+r.result+' • '+r.status+' • '+JSON.stringify(r.detailed_results||[])+' • '+(r.rule_results||[]).map(x=>x.name+': '+x.result).join(', ');display('Fetched confirmed Lithic transaction status. When a native rule declines before ASA, its reason appears in rule_results even though Occlet ASA was not called.');}));
+  $('replay').addEventListener('click',()=>run(async()=>{if(!lastSigned)throw Error('First sign a payment intent');await api('/api/agent/intents',lastSigned);display('Unexpected replay success',false)}));
+  $('revoke').addEventListener('click',()=>run(async()=>{if(!card)throw Error('No card to revoke');await api(`/api/member/cards/${card.id}/revoke`,{});display('Member revoked the virtual card. Outstanding intents and one-time handles have been invalidated.')}));
+  $('preset').addEventListener('click',()=>{ $('limit').value='25'; $('budget').value='100'; $('threshold').value='23.99'; $('allowed').value='GROCERY_101'; $('merchant').value='GROCERY_101'; $('amount').value='23.99'; display('Policy configured. Issue a new demo card now. Below $24: auto approved. $24.00–$25.00: member approval. Above $25: denied.'); });
+  $('external-link').addEventListener('click',()=>run(async()=>{if(!card)throw Error('Issue a demo card first');const r=await api(`/api/member/cards/${card.id}/capitalone/link`,{merchant_id:$('allowed').value,checkout_url:$('external-url').value,last_four:$('external-last4').value});$('external-info').textContent=`Capital One virtual card ****${r.last_four} linked to ${r.merchant_domain}. No card credentials stored.`;display('External Capital One reference linked. Occlet only controls the agent handoff, not Capital One authorization.')}));
+  for(const [button,amount] of [['scenario-approved','23.99'],['scenario-stepup','24.50'],['scenario-declined','25.01']]){$(button).addEventListener('click',()=>{$('amount').value=amount;$('merchant').value=$('allowed').value;$('checkout-link').style.display='none';$('sign').click()});}
+  $('scenario-unauthorized').addEventListener('click',()=>run(async()=>{if(!card)throw Error('Issue a demo card first');lastIntent=null;lastToken=null;const d={agent_id:'unauthorized-agent',card_id:card.id,merchant_id:$('allowed').value,amount_cents:1000,currency:'USD',nonce:crypto.randomUUID(),timestamp_ms:Date.now(),signature_b64:'AQID'};const response=await fetch('/api/agent/intents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});const result=await response.json();if(response.status!==401)throw Error('Expected HTTP 401; got '+response.status);$('checkout-link').style.display='none';display(`UNAUTHORIZED AGENT DECLINED by Occlet (HTTP 401)\n${result.detail}`); }));
+  $('external-handoff').addEventListener('click',()=>run(async()=>{if(!lastIntent||!lastToken)throw Error('Request an approved signed intent first. $24–$25 requires member approval.');const r=await api('/api/external/checkout/handoff',{intent_id:lastIntent,payment_token:lastToken});const link=$('checkout-link');link.href=r.checkout_url;link.style.display='inline';$('external-info').textContent=`OCCLET GATE APPROVED: $${(r.amount_cents/100).toFixed(2)}; Capital One ****${r.card_last_four}; issuer authorization NOT attempted.`;display('OCCLET APPROVED THE AGENT. Merchant checkout link unlocked. You must verify the merchant total and pay manually on its HTTPS checkout. No Capital One transaction has happened yet.'); }));
+  async function networkOnlyDemo(merchantOverride=null, amountOverride=null, unknown=false){
+    if(!card&&!unknown)throw Error('First register an agent and create a CARD_BOUND_NETWORK virtual card');
+    const amount=amountOverride??Math.round(Number($('amount').value)*100);
+    const merchant=merchantOverride||$('merchant').value;
+    const request={card_reference:unknown?'not-a-real-card':(card.lithic_card_token||card.id),merchant_id:merchant,
+      amount_cents:amount,network_reference:'rrn_'+crypto.randomUUID()};
+    const r=await api('/api/network/direct/authorize',request);
+    $('direct-info').textContent=`${r.decision} • ${r.reason} • attributed agent ${r.agent_id||'NONE'} • proof CARD_BINDING_ONLY • no purchase intent • merchant ${merchant} • ${money(amount)}`;
+    display(`FLOW B — ${r.decision}
+Agent identity inferred from the card binding: ${r.agent_id||'UNKNOWN'}
+No signature or payment intent in the network message.
+${r.reason}.` ,r.decision==='APPROVED');
+  }
+  $('direct-local').addEventListener('click',()=>run(()=>networkOnlyDemo()));
+  $('direct-over').addEventListener('click',()=>run(()=>{
+    if(!card)throw Error('Issue network-direct card first');
+    return networkOnlyDemo(null,card.approval_threshold_cents+100);
+  }));
+  $('direct-unknown').addEventListener('click',()=>run(()=>networkOnlyDemo(null,1000,true)));
+  $('reset').addEventListener('click',()=>run(async()=>{await api('/api/demo/reset',{});keys=agentId=card=registeredScope=lastSigned=lastIntent=lastToken=lastMerchant=lastAmount=lastLithicTransaction=null;$('agent-info').textContent='No agent registered';$('card-info').textContent='No card issued';$('payment-info').textContent='No payment intent yet';$('lithic-info').textContent='Not linked';$('native-rule-info').textContent='';$('checkout-link').style.display='none';$('external-info').textContent='External card reference cleared.';$('direct-info').textContent='Network-direct comparison reset.';['budget-total','reserved','spent','remaining'].forEach(id=>$(id).textContent='—');display('Lab reset. All in-memory test state cleared.')}));
+  let w4LastRef=null;
+  let w4LastLithicTx=null;
+  let w4ReleaseRef=null;
+  function w4Render(r){
+    $('w4-cash').textContent=money(r.balance.cash_cents);
+    $('w4-protected').textContent=money(r.protected_cents);
+    $('w4-room').textContent=money(r.free_to_spend_cents);
+    $('w4-hold').textContent=money(r.balance.held_cents);
+    $('w4-status').textContent=`Parent arrangement ${r.arrangement_id} • yield ${r.yield_enabled?'ON':'OFF'} • available ${money(r.balance.available_cents)} • trip protection ${money(r.protected_cents)} • room ${money(r.free_to_spend_cents)} • Lithic parent linked ${r.lithic_parent_linked?'YES':'NO'}`;
+    $('w4-history').textContent=JSON.stringify({decision_evidence:r.decisions,member_permission_releases:r.releases,authorization_holds:r.balance.authorizations,financial_journals:r.balance.journal_lines,lithic_transaction_events:r.lithic_events},null,2);
+  }
+  async function w4Reload(){const r=await api('/api/use-cases/w4/status');w4Render(r);return r;}
+  $('w4-start').addEventListener('click',()=>run(async()=>{
+    if(!confirm('Start a fresh W4 scenario? This resets registered agents and previous in-memory authorization traces (but retains your linked Lithic parent card). It does not delete prior SQL journal books.'))return;
+    const r=await api('/api/use-cases/w4/setup',{});w4LastRef=null;w4LastLithicTx=null;w4ReleaseRef='member-'+crypto.randomUUID();w4Render({...r,lithic_parent_linked:false});await w4Reload();
+    $('w4-decision').textContent='Ready. Parent cash $500, trip protection $300, spendable room $200. Attempt $350.';
+    display('W4 loaded: protected trip is a permission rule, NOT a financial hold.');
+  }));
+  $('w4-refresh').addEventListener('click',()=>run(async()=>{await w4Reload();display('Loaded authoritative SQL demo balances, protection registry, and webhook inbox.')}));
+  async function w4Purchase(){
+    const ref=crypto.randomUUID();const r=await api('/api/use-cases/w4/authorize',{amount_cents:35000,reference:ref});
+    if(r.decision==='APPROVED')w4LastRef=r.authorization_ref;
+    w4Render({...r.w4,lithic_parent_linked:!!(await api('/api/state')).parent.lithic_parent_card_token});
+    $('w4-decision').textContent=`W4 ${r.decision} • ${r.reason}\nRequest $350.00 on member's own parent card\n${r.decision==='DECLINED'?'No hold and no ledger journal created.':'One $350 hold placed against parent available balance.'}`;
+    display('W4 '+r.decision+' — '+r.reason,r.decision==='APPROVED');
+  }
+  $('w4-decline').addEventListener('click',()=>run(w4Purchase));
+  $('w4-retry').addEventListener('click',()=>run(w4Purchase));
+  $('w4-release').addEventListener('click',()=>run(async()=>{
+    const r=await api('/api/use-cases/w4/release',{release_cents:15000,release_ref:w4ReleaseRef||('member-'+crypto.randomUUID())});
+    await w4Reload();$('w4-decision').textContent='Member released $150 of trip protection. Remaining protected $150; cash unchanged. Retry $350 to create one authorization hold.';
+    display('Member permission updated without moving or reserving any money.');
+  }));
+  $('w4-clear').addEventListener('click',()=>run(async()=>{
+    if(!w4LastRef)throw Error('No local W4 authorization to clear. Approve a local $350 retry first.');
+    const r=await api('/api/demo-ledger/clear',{authorization_ref:w4LastRef,settled_cents:34500});
+    await w4Reload();display('Local clearing: settled $345 against $350 hold; $5 released. No second hold.');
+  }));
+  $('w4-reverse').addEventListener('click',()=>run(async()=>{
+    if(!w4LastRef)throw Error('No local W4 authorization to reverse.');
+    await api('/api/demo-ledger/release',{authorization_ref:w4LastRef});
+    await w4Reload();display('Local W4 authorization reversed. Parent available restored.');
+  }));
+  $('w4-lithic-attempt').addEventListener('click',()=>run(async()=>{
+    const state=await api('/api/state');if(!state.parent.lithic_parent_card_token)throw Error('Link your existing Lithic parent card under Lithic Sandbox first.');
+    const r=await api('/api/member/parent/lithic/simulate',{merchant_id:'GROCERY_101',amount_cents:35000});
+    w4LastLithicTx=r.transaction_token||null;
+    $('w4-lithic-info').textContent=`Submitted W4 parent-card purchase to Lithic sandbox. Transaction: ${w4LastLithicTx||'pending'}. Check result after ASA; first should decline PROTECTED_BY_MEMBER. Once protection is released, resend to authorize. A separate signed Events API webhook handles clearing or reversal.`;
+    await w4Reload();display('Lithic sandbox parent transaction submitted; pending ASA decision.');
+  }));
+  $('w4-lithic-result').addEventListener('click',()=>run(async()=>{
+    if(!w4LastLithicTx)throw Error('Simulate a W4 transaction through Lithic first.');
+    const r=await api('/api/lithic/transactions/'+encodeURIComponent(w4LastLithicTx));
+    $('w4-lithic-info').textContent=`Lithic transaction ${r.token} • status ${r.status} • decision ${r.result} • details ${JSON.stringify(r.detailed_results||[])}. Financial journal changes are in Occlet PostgreSQL, not Lithic Ledger.`;
+    await w4Reload();display('Lithic transaction status read; financial journal state refreshed.');
+  }));
+  refresh().catch(e=>display(e.message,false));
+</script><script>
+// Admin-only demonstration action; the entire API is localhost-only and has no
+// real role-based authentication. Never expose port 8000 publicly.
+(()=>{const area=document.getElementById('admin-review-list'),message=document.getElementById('admin-review-feedback');
+const request=async(path,data)=>{const response=await fetch(path,{method:data?'POST':'GET',headers:{'Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});const body=await response.json();if(!response.ok)throw Error(body.detail||response.status);return body};
+async function render(){area.replaceChildren();try{const data=await request('/api/member/experience');const rows=data.hold_release_requests||[];if(!rows.length){area.textContent='No member hold-review requests in this funding arrangement.';return}
+for(const r of rows){const row=document.createElement('div');row.className='event';const name=document.createElement('b');name.textContent=r.card_label;const status=document.createElement('span');status.textContent=r.status;const control=document.createElement('div');const ref=document.createElement('code');ref.textContent=r.authorization_ref;control.append(ref);
+if(r.status==='PENDING_REVIEW'&&(r.authorization_ref.startsWith('local:')||r.authorization_ref.startsWith('w4-local:'))){const btn=document.createElement('button');btn.type='button';btn.textContent='Confirm demo reversal';btn.className='secondary';btn.onclick=async()=>{if(!confirm('Confirm the local PostgreSQL demo authorization should be released? This does NOT reverse any Lithic network payment.'))return;btn.disabled=true;try{await request('/api/demo-ledger/release',{authorization_ref:r.authorization_ref});message.textContent='Local hold released, journal posted once.';await render()}catch(e){message.textContent=e.message;btn.disabled=false}};control.append(' ',btn)}else if(r.status==='PENDING_REVIEW'){control.append(' · Review in Lithic; do not reverse an external transaction only in local SQL.')}
+row.append(name,status,control);area.append(row)}}catch(e){message.textContent='Cannot load member queue: '+e.message}};
+document.getElementById('admin-review-refresh').onclick=render;
+})();
+</script>
+</body></html>
