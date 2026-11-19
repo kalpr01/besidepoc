@@ -176,7 +176,9 @@ cmd_update() {
   local app_id tmp
   app_id="$(az containerapp show -n "$APP" -g "$RG" --query id -o tsv)"
   tmp="$(mktemp -d)"
-  az containerapp show -n "$APP" -g "$RG" -o json > "$tmp/app.json"
+  # Read with the same API version the PATCH uses: `az containerapp show` returns a newer shape
+  # (imageType, scale.cooldownPeriod, ...) that 2024-03-01 rejects.
+  az rest --method get --url "https://management.azure.com${app_id}?api-version=2024-03-01" -o json > "$tmp/app.json"
   jq --arg a "$ACR_SERVER/besidepoc-app:$TAG" --arg p "$ACR_SERVER/besidepoc-proxy:$TAG" \
     '{properties: {template: (.properties.template
         | .containers |= map(if .name == "proxy" then .image = $p else .image = $a end)
@@ -184,6 +186,19 @@ cmd_update() {
   az rest --method patch --url "https://management.azure.com${app_id}?api-version=2024-03-01" \
     --body "@$tmp/patch.json" -o none
   rm -rf "$tmp"
+  # The PATCH is asynchronous: wait until the revision running the new tag is the ready one.
+  log "Waiting for the new revision"
+  local i state="" latest="" ready="" image=""
+  for i in $(seq 1 60); do
+    read -r state latest ready image < <(az containerapp show -n "$APP" -g "$RG" \
+      --query "[properties.provisioningState, properties.latestRevisionName, properties.latestReadyRevisionName, properties.template.containers[?name=='ui'].image | [0]]" -o tsv 2>/dev/null | tr '\n' ' ') || true
+    [[ "$state" == Failed ]] && die "Revision provisioning failed. Check: az containerapp revision list -n $APP -g $RG -o table"
+    if [[ "$state" == Succeeded && "$image" == *":$TAG" && -n "$latest" && "$latest" == "$ready" ]]; then
+      echo "   $latest is ready"; break
+    fi
+    sleep 10
+  done
+  [[ "$latest" == "$ready" && "$image" == *":$TAG" ]] || die "New revision not ready after 10 minutes"
   smoke_test
 }
 
