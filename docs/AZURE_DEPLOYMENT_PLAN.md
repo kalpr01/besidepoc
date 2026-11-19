@@ -1,6 +1,8 @@
 # Azure Deployment Plan — Beside / Occlet Agentic Delegated Card POC
 
-Target repo: `github.com/kalpr01/besidepoc` · Environment: `dev` (POC, sandbox money only) · Default region: **East US 2** (close to Lithic's US endpoints; change if you prefer)
+Target repo: `github.com/kalpr01/besidepoc` · Environment: `dev` (POC, sandbox money only) · Region: **Central US**, resource group `rg-besidepoc-cus`
+
+> **Why not East US 2:** on Nov 19, 2026 Azure rejected PostgreSQL Flexible Server B1ms in East US 2 for this pay-as-you-go subscription (`SkuNotAvailable`). It failed with and without a pinned zone, even though quota (384 vCores) and the capability list were fine. Postgres must sit in the same region as the app, because the ui writes its state on every request, including Lithic ASA callbacks with a 2-second bridge timeout. So the whole stack moved to Central US. `PG_SKU` and `PG_ZONE` can override the Postgres size and zone. The empty `rg-besidepoc-dev` group in East US 2 can be deleted.
 
 ## 1. What we are deploying (from the code)
 
@@ -40,7 +42,7 @@ Naming: `<type>-besidepoc-dev`. ACR, Key Vault and PostgreSQL need globally uniq
 
 | # | Resource | SKU / setting | Purpose |
 |---|---|---|---|
-| 1 | Resource group `rg-besidepoc-dev` | East US 2 | Holds everything |
+| 1 | Resource group `rg-besidepoc-cus` | Central US | Holds everything |
 | 2 | Log Analytics workspace `log-besidepoc-dev` | PerGB2018, 30-day retention | Required by the Container Apps environment; container stdout/stderr |
 | 3 | Application Insights `appi-besidepoc-dev` *(optional)* | Workspace-based | Request traces / failures during demo |
 | 4 | Container Registry `acrbesidepocdev` | **Basic**, admin user **disabled** | Stores the app image |
@@ -132,4 +134,4 @@ If phase 2 fails on the first run with a Key Vault access error, the role assign
 
 ## 9. Teardown
 
-`az group delete -n rg-besidepoc-dev` removes everything. Also delete the two Entra ID app registrations and remove the ASA/Events endpoints in the Lithic sandbox dashboard.
+`az group delete -n rg-besidepoc-cus` removes everything (and `rg-besidepoc-dev` for the leftover East US 2 attempt). Also delete the two Entra ID app registrations and remove the ASA/Events endpoints in the Lithic sandbox dashboard.

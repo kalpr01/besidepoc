@@ -25,6 +25,12 @@ param postgresAdminLogin string = 'occlet_demo'
 @description('PostgreSQL administrator password. Letters and digits only so it is URL-safe in DATABASE_URL.')
 param postgresAdminPassword string
 
+@description('PostgreSQL compute size. Standard_B* = Burstable, Standard_D* = General Purpose.')
+param postgresSku string = 'Standard_B1ms'
+
+@description('Availability zone for PostgreSQL (1, 2, 3). Empty = let Azure choose. Pin one if you get SkuNotAvailable.')
+param postgresZone string = ''
+
 @description('Your public IP for psql access to the database. Empty = no client rule.')
 param clientIpAddress string = ''
 
@@ -149,11 +155,12 @@ resource pg 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' = {
   location: location
   tags: tags
   sku: {
-    name: 'Standard_B1ms'
-    tier: 'Burstable'
+    name: postgresSku
+    tier: startsWith(postgresSku, 'Standard_B') ? 'Burstable' : 'GeneralPurpose'
   }
   properties: {
     version: '16'
+    availabilityZone: empty(postgresZone) ? null : postgresZone
     administratorLogin: postgresAdminLogin
     administratorLoginPassword: postgresAdminPassword
     storage: {

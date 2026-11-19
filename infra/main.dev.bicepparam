@@ -4,13 +4,15 @@ using './main.bicep'
 
 param prefix = 'besidepoc'
 param envName = 'dev'
-param location = readEnvironmentVariable('LOCATION', 'eastus2')
+param location = readEnvironmentVariable('LOCATION', 'centralus')
 
 param deployApp = bool(readEnvironmentVariable('DEPLOY_APP', 'false'))
 param imageTag = readEnvironmentVariable('IMAGE_TAG', 'latest')
 
 param postgresAdminLogin = 'occlet_demo'
 param postgresAdminPassword = readEnvironmentVariable('PG_ADMIN_PASSWORD')
+param postgresSku = readEnvironmentVariable('PG_SKU', 'Standard_B1ms')
+param postgresZone = readEnvironmentVariable('PG_ZONE', '')
 param clientIpAddress = readEnvironmentVariable('CLIENT_IP', '')
 
 param deployerPrincipalId = readEnvironmentVariable('DEPLOYER_OID')

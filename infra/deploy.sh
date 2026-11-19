@@ -12,8 +12,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-RG="${RG:-rg-besidepoc-dev}"
-export LOCATION="${LOCATION:-eastus2}"
+# Central US: East US 2 refused PostgreSQL Flexible Server for this subscription (SkuNotAvailable).
+RG="${RG:-rg-besidepoc-cus}"
+export LOCATION="${LOCATION:-centralus}"
 DEPLOYMENT="besidepoc-infra"
 PARAMS="infra/main.dev.bicepparam"
 GITHUB_REPO="${GITHUB_REPO:-kalpr01/besidepoc}"

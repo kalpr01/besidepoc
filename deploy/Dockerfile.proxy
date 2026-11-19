@@ -1,4 +1,5 @@
 FROM caddy:2.8.4-alpine
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-RUN caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+# No `RUN caddy validate` here: cross-building linux/amd64 on Apple silicon runs Caddy under
+# QEMU, where the Go runtime crashes (lfstack.push). CI validates the Caddyfile natively.
 EXPOSE 8080
