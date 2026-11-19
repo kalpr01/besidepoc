@@ -62,6 +62,7 @@ def default_parent() -> dict:
 
 
 _parent = default_parent()
+_member: dict = dict({"id": "member_demo", "name": "Ann Gutierrez"})  # active lab test member
 
 
 def parent_used() -> int:
@@ -99,6 +100,90 @@ def parent_policy(amount: int, merchant_id: str) -> str | None:
     elif amount > parent_available():
         return "PARENT_AVAILABLE_CREDIT"
     return None
+
+
+# Q Delegated Card decision layers for a parent-card purchase on a W4 arrangement.
+# Level 1 = errand card check: hard rules in a FIXED order against the arrangement and ledger.
+# Level 2 = enhanced authorization: precomputed signals + competing-intent order; can ONLY tighten.
+# The SQL row-locked authorize() remains the financial authority; this is the explained trace.
+W4_PRICE_BANDS = {"GROCERY_101": 50000, "TICKETS_303": 60000, "ELECTRONICS_202": 150000}  # demo signals
+W4_VELOCITY_WINDOW_SECONDS = 600
+W4_VELOCITY_MAX_AUTHS = 5
+
+
+def w4_rule_layers(amount: int, merchant: str) -> dict | None:
+    if _parent.get("ledger_mode") != "OCCLET_SQL_LEDGER":
+        return None
+    from occlet_w4 import overview
+    from occlet_demo_ledger import LedgerRejected
+    try:
+        ov = overview(_parent["id"])
+    except LedgerRejected:
+        return None  # W4 not initialized for this arrangement
+    m = lambda c: f"${c / 100:,.2f}"
+    bal = ov["balance"]
+    available, protected, yld = bal["available_cents"], ov["protected_cents"], ov["yield_enabled"]
+    room = available if yld else max(0, available - protected)
+    used = parent_used()
+    rules, decided_by, reason = [], None, None
+
+    def add(level, rid, name, passed, detail, code):
+        nonlocal decided_by, reason
+        if decided_by:
+            rules.append({"level": level, "id": rid, "name": name, "result": "NOT_REACHED", "detail": detail})
+            return
+        rules.append({"level": level, "id": rid, "name": name, "result": "PASS" if passed else "FAIL",
+                      "detail": detail, **({} if passed else {"reason_code": code})})
+        if not passed:
+            decided_by, reason = f"LEVEL_{level}", code
+
+    add(1, "L1.1", "Arrangement active", _parent["status"] == "ACTIVE",
+        f"Funding arrangement status {_parent['status']}", "PARENT_ACCOUNT_PAUSED")
+    add(1, "L1.2", "Per-purchase limit", amount <= _parent["max_transaction_cents"],
+        f"{m(amount)} vs limit {m(_parent['max_transaction_cents'])}", "PARENT_PER_TRANSACTION_LIMIT")
+    add(1, "L1.3", "Shared spending limit", used + amount <= _parent["monthly_policy_limit_cents"],
+        f"{m(used)} used this month + {m(amount)} vs {m(_parent['monthly_policy_limit_cents'])}",
+        "PARENT_SHARED_SPENDING_LIMIT")
+    add(1, "L1.4", "Funds available (Occlet ledger)", amount <= available,
+        f"{m(amount)} vs {m(available)} available", "INSUFFICIENT_FUNDS")
+    add(1, "L1.5", "Protected intents" + (" (yield ON)" if yld else " (yield OFF)"), yld or amount <= room,
+        f"Room {m(room)} = available {m(available)} − protected trip {m(protected)}"
+        + ("; trip yields room" if yld else f"; {m(amount)} " + ("fits" if amount <= room else "would break the trip protection")),
+        "PROTECTED_BY_MEMBER")
+    level1_passed = decided_by is None
+    if not level1_passed:
+        for rid, name in (("L2.1", "Competing-intent order"), ("L2.2", "Velocity signal"), ("L2.3", "Price-band signal")):
+            rules.append({"level": 2, "id": rid, "name": name, "result": "NOT_REACHED",
+                          "detail": "Level 1 declined; Level 2 only runs after Level 1 passes"})
+    else:
+        after = available - amount
+        add(2, "L2.1", "Competing-intent order", yld or after >= protected,
+            "Must-happen intents first: trip " + (f"protection {m(protected)} still covered ({m(after)} left)"
+                                                 if yld or after >= protected else f"would be {m(protected - after)} short"),
+            "L2_COMPETING_INTENT")
+        now = datetime.now(timezone.utc)
+        recent = [a for a in bal["authorizations"] if a.get("status") in ("AUTHORIZED", "CLEARED")
+                  and a.get("created_at") and hasattr(a["created_at"], "tzinfo")
+                  and (now - a["created_at"]).total_seconds() <= W4_VELOCITY_WINDOW_SECONDS]
+        add(2, "L2.2", "Velocity signal", len(recent) < W4_VELOCITY_MAX_AUTHS,
+            f"{len(recent)} approved in the last {W4_VELOCITY_WINDOW_SECONDS // 60} min (max {W4_VELOCITY_MAX_AUTHS - 1})",
+            "L2_VELOCITY")
+        band = W4_PRICE_BANDS.get(merchant, 50000)
+        add(2, "L2.3", "Price-band signal", amount <= band,
+            f"{m(amount)} vs usual band up to {m(band)} for {merchant}", "L2_PRICE_BAND")
+    return {"rules": rules, "decided_by": decided_by, "reason": reason, "level1_passed": level1_passed,
+            "inputs": {"amount_cents": amount, "available_cents": available, "protected_cents": protected,
+                       "yield_enabled": yld, "room_cents": room, "merchant_id": merchant}}
+
+
+def finalize_layers(layers: dict | None, decision: str, reason: str | None) -> dict | None:
+    """Record the authoritative outcome; flag if the SQL row-lock recheck disagreed with the trace."""
+    if layers is None:
+        return None
+    layers["final"] = {"decision": decision, "reason": reason or "POLICY_AND_FUNDING_OK"}
+    if decision != "APPROVED" and not layers["decided_by"]:
+        layers["final"]["note"] = "Declined by the SQL row-locked recheck after the rules passed (state changed)"
+    return layers
 
 
 def reserve_parent_once(authorization_key: str, amount_cents: int, *,
@@ -140,7 +225,8 @@ def log(action: str, result: str, details: str = "") -> None:
 
 def add_auth_trace(*, source: str, mode: str, decision: str, card: dict | None,
                    merchant: str, amount: int, network_reference: str,
-                   intent_id: str | None = None, reason: str | None = None) -> None:
+                   intent_id: str | None = None, reason: str | None = None,
+                   layers: dict | None = None) -> None:
     _auth_traces.append({
         "at": datetime.now(timezone.utc).isoformat(),
         "source": source, "mode": mode, "decision": decision,
@@ -154,6 +240,7 @@ def add_auth_trace(*, source: str, mode: str, decision: str, card: dict | None,
         "reason": reason or ("POLICY_AND_FUNDING_OK" if decision == "APPROVED" else "DECLINED"),
         "warning": "Card binding attributes a transaction to the registered agent; it does NOT prove the agent initiated it"
                    if mode == FLOW_CARD_BOUND else None,
+        "layers": layers,
     })
     del _auth_traces[:-40]
 
@@ -297,20 +384,37 @@ def initialize_local_sql():
         return
     initialize()  # fails startup rather than silently running with an empty database
     snapshot = load_runtime()
-    if not snapshot:
-        return
     with _lock:
-        _parent.clear(); _parent.update(default_parent()); _parent.update(snapshot.get("parent", {}))
-        for table, key in ((_agents, "agents"), (_cards, "cards"), (_intents, "intents"),
-                           (_network_refs, "network_refs"), (_lithic_refs, "lithic_refs")):
-            table.clear(); table.update(snapshot.get(key, {}))
-        _nonces.clear(); _nonces.update(tuple(x) for x in snapshot.get("nonces", []))
-        _events.clear(); _events.extend(snapshot.get("events", []))
-        _auth_traces.clear(); _auth_traces.extend(snapshot.get("auth_traces", []))
-        # Unsigned, expired-on-restart intents cannot be executed. The token is not persisted.
-        for intent in _intents.values():
-            if intent.get("status") in ("READY", "AWAITING_MEMBER_APPROVAL", "EXPIRED_ON_RESTART"):
-                intent["status"] = "EXPIRED"
+        if snapshot:
+            _restore_runtime(snapshot)
+        else:
+            from occlet_sql_store import get_active_member
+            _member.clear(); _member.update(get_active_member() or {"id": "member_demo", "name": "Ann Gutierrez"})
+
+
+def _restore_runtime(snapshot: dict | None, member: dict | None = None) -> None:
+    """Load one member's saved state into the in-process cache. Caller holds _lock."""
+    snapshot = snapshot or {}
+    _parent.clear(); _parent.update(default_parent()); _parent.update(snapshot.get("parent", {}))
+    for table, key in ((_agents, "agents"), (_cards, "cards"), (_intents, "intents"),
+                       (_network_refs, "network_refs"), (_lithic_refs, "lithic_refs")):
+        table.clear(); table.update(snapshot.get(key, {}))
+    _nonces.clear(); _nonces.update(tuple(x) for x in snapshot.get("nonces", []))
+    _events.clear(); _events.extend(snapshot.get("events", []))
+    _auth_traces.clear(); _auth_traces.extend(snapshot.get("auth_traces", []))
+    # Unsigned, expired-on-restart intents cannot be executed. The token is not persisted.
+    for intent in _intents.values():
+        if intent.get("status") in ("READY", "AWAITING_MEMBER_APPROVAL", "EXPIRED_ON_RESTART"):
+            intent["status"] = "EXPIRED"
+    _member.clear(); _member.update(member or snapshot.get("member") or {"id": "member_demo", "name": "Ann Gutierrez"})
+
+
+def _persist_now() -> None:
+    """Write the active member's state to SQL now. Caller holds _lock."""
+    from occlet_sql_store import persist_runtime
+    persist_runtime(parent=_parent, agents=_agents, cards=_cards, intents=_intents,
+                    nonces=_nonces, network_refs=_network_refs, lithic_refs=_lithic_refs,
+                    events=_events, auth_traces=_auth_traces, member=_member)
 
 
 @app.middleware("http")
@@ -324,7 +428,7 @@ async def persist_local_demo_registry(request: Request, call_next):
             with _lock:
                 persist_runtime(parent=_parent, agents=_agents, cards=_cards, intents=_intents,
                                 nonces=_nonces, network_refs=_network_refs, lithic_refs=_lithic_refs,
-                                events=_events, auth_traces=_auth_traces)
+                                events=_events, auth_traces=_auth_traces, member=_member)
         except Exception:
             # Never disclose SQL connection credentials, and never deliver an approval
             # if its audit state could not be persisted.
@@ -369,7 +473,7 @@ def beside_portal():
 
 @app.get("/member/assets/{filename}")
 def member_assets(filename: str):
-    if filename not in ("member.css", "member.js", "beside-delegated.css", "beside-delegated.js"):
+    if filename not in ("member.css", "member.js", "beside-delegated.css", "beside-delegated.js", "lab-members.js"):
         raise HTTPException(404, "Asset not found")
     return FileResponse(Path(__file__).parent / "static" / filename, headers={"Cache-Control":"no-store"})
 
@@ -460,7 +564,7 @@ def member_experience():
                 pending.append({**intent, "card_label":card_names.get(intent["card_id"],"Delegated card"),
                                 "expires_in_seconds":max(0, int(_intents[intent["id"]]["expires_at"]-time.time()))})
         return {
-            "member":{"id":"member_demo","name":"Ann Gutierrez","demo":True},
+            "member":{"id":_member["id"],"name":_member["name"],"demo":True},
             "parent":{"arrangement_id":parent["id"],"status":parent["status"],
                 "enabled":parent["enabled"],"ledger_mode":parent["ledger_mode"],
                 "ledger_source":"OCCLET_POSTGRES_DEMO_LEDGER" if is_sql else "NOT_POSTGRES_LEDGER",
@@ -510,6 +614,7 @@ def reset():
     with _lock:
         _agents.clear(); _cards.clear(); _intents.clear(); _nonces.clear(); _network_refs.clear(); _lithic_refs.clear(); _events.clear(); _auth_traces.clear()
         _parent.clear(); _parent.update(default_parent())
+        _member.clear(); _member.update({"id": "member_demo", "name": "Ann Gutierrez"})
         from occlet_sql_store import reset_sql_registry
         reset_sql_registry()
         log("Local demo", "RESET", "All test state removed; no real card credentials")
@@ -865,8 +970,19 @@ def revoke(card_id: str):
         for intent in _intents.values():
             if intent["card_id"] == card_id and intent["status"] in ("READY", "AWAITING_MEMBER_APPROVAL"):
                 intent["status"] = "REVOKED"
-        log("Member revocation", "REVOKED", f"{card['alias']}; all pending payment handles invalidated")
-        return {"status": "REVOKED"}
+        card["removed_at"] = datetime.now(timezone.utc).isoformat()
+        lithic_state = card.get("lithic_state")
+        if card.get("lithic_card_token") and lithic_state != "CLOSED":
+            from lithic_client import lithic_request, LithicError
+            try:
+                lithic_request("PATCH", f"/cards/{card['lithic_card_token']}", payload={"state": "CLOSED"})
+                card["lithic_state"] = lithic_state = "CLOSED"
+            except LithicError as exc:
+                card["lithic_state"] = lithic_state = "CLOSE_FAILED"
+                log("Lithic sandbox", "CLOSE FAILED", f"{card['alias']}: {exc}; Occlet still declines it (REVOKED)")
+        log("Member revocation", "REVOKED", f"{card['alias']}; all pending payment handles invalidated"
+            + (f"; Lithic card {lithic_state}" if lithic_state else ""))
+        return {"status": "REVOKED", "lithic_state": lithic_state, "card_id": card_id}
 
 
 # Lithic sandbox integration. The local member UI is NOT authenticated; keep
@@ -1036,6 +1152,7 @@ def decide_lithic_asa(payload: dict) -> dict:
     parent_card = _parent["enabled"] and card_token == _parent["lithic_parent_card_token"]
     card = next((c for c in _cards.values() if c.get("lithic_card_token") == card_token), None)
     reason = None
+    layers = None
     if not card and not parent_card:
         reason = "UNKNOWN_CARD"
     else:
@@ -1045,6 +1162,9 @@ def decide_lithic_asa(payload: dict) -> dict:
         result = ("INSUFFICIENT_FUNDS" if reason == "PARENT_AVAILABLE_CREDIT" else
                   "VELOCITY_EXCEEDED" if "LIMIT" in reason else
                   "CARD_PAUSED" if reason == "PARENT_ACCOUNT_PAUSED" else "UNAUTHORIZED_MERCHANT")
+    elif parent_card and (layers := w4_rule_layers(amount, merchant)) and layers["decided_by"] == "LEVEL_2":
+        reason = layers["reason"]  # Level 2 can only tighten
+        result = "UNAUTHORIZED_MERCHANT"
     elif parent_card:
         result = "APPROVED"
         from occlet_demo_ledger import LedgerRejected
@@ -1110,9 +1230,12 @@ def decide_lithic_asa(payload: dict) -> dict:
     _lithic_refs[tx] = {"card_token": card_token, "amount": amount,
                         "merchant": merchant, "result": result,
                         "mode": mode, "matched_intent": matched_intent, "reason": reason}
+    if parent_card and layers is None:
+        layers = w4_rule_layers(amount, merchant)  # parent policy declined before layers ran
+    layers = finalize_layers(layers, result, reason) if parent_card else None
     add_auth_trace(source="LITHIC_SANDBOX_ASA", mode=mode, decision=result,
                    card=card, merchant=merchant, amount=amount,
-                   network_reference=tx, intent_id=matched_intent, reason=reason)
+                   network_reference=tx, intent_id=matched_intent, reason=reason, layers=layers)
     if result != "APPROVED":
         log("Lithic ASA", "DECLINED", f"{tx}: {reason or result}; merchant={acceptor}; amount=${amount / 100:.2f}")
     return {"result": result}
@@ -1182,6 +1305,8 @@ def w4_status():
         r['lithic_parent_linked']=bool(_parent.get('lithic_parent_card_token'))
         r['lithic_parent_card_last_four']=_parent.get('parent_card_last_four')
         r['lithic_events']=event_history(_parent['id'])
+        r['latest_layers']=next((dict(t['layers'],source=t['source'],at=t['at'],network_reference=t['network_reference'])
+                                 for t in reversed(_auth_traces) if t.get('layers')),None)
         return r
 
 @app.post("/api/use-cases/w4/release")
@@ -1207,7 +1332,10 @@ def w4_simulated_parent_purchase(req: W4PurchaseRequest):
     with _lock:
         if _parent.get('ledger_mode')!='OCCLET_SQL_LEDGER':
             raise HTTPException(409,'Initialize the W4 scenario first')
+        layers=w4_rule_layers(req.amount_cents,'GROCERY_101')
         reason=parent_policy(req.amount_cents,'GROCERY_101')
+        if not reason and layers and layers['decided_by']=='LEVEL_2':
+            reason=layers['reason']  # Level 2 can only tighten
         if not reason:
             try:
                 reserve_parent_once('w4-local:'+req.reference,req.amount_cents,
@@ -1215,15 +1343,16 @@ def w4_simulated_parent_purchase(req: W4PurchaseRequest):
             except LedgerRejected as exc:
                 reason=exc.code
         decision='DECLINED' if reason else 'APPROVED'
+        layers=finalize_layers(layers,decision,reason)
         add_auth_trace(source='W4_LOCAL_PARENT_CARD',mode='PARENT_CARD',
             decision=decision,card=None,merchant='GROCERY_101',amount=req.amount_cents,
-            network_reference=req.reference,reason=reason)
+            network_reference=req.reference,reason=reason,layers=layers)
         log('W4 parent card auth',decision,
             f"{req.reference}: {reason or 'one SQL hold; protection remains policy-only'}")
         r=overview(_parent['id'])
         return {'decision':decision,'reason':reason or 'POLICY_AND_FUNDING_OK',
                 'authorization_ref':('w4-local:'+req.reference if not reason else None),
-                'w4':r}
+                'layers':layers,'w4':r}
 
 class InternalLithicEvent(BaseModel):
     webhook_id: str = Field(min_length=5,max_length=180)
@@ -1373,6 +1502,121 @@ def demo_ledger_topup(req: DemoLedgerTopUp):
 class ExistingLithicParent(BaseModel):
     account_token: uuid.UUID
     card_token: uuid.UUID
+
+class LabMemberCreate(BaseModel):
+    display_name: str = Field(min_length=2, max_length=80)
+    opening_balance_cents: int = Field(default=50000, gt=0, le=10_000_000)
+    trip_protection_cents: int = Field(default=30000, ge=0, le=10_000_000)
+    lithic_parent: Literal["NONE", "CREATE", "LINK"] = "NONE"
+    account_token: uuid.UUID | None = None
+    card_token: uuid.UUID | None = None
+
+
+def _member_summary(member: dict, snap: dict | None, active: bool) -> dict:
+    snap = snap or {}
+    p, cards = snap.get("parent") or {}, snap.get("cards") or {}
+    live = [c for c in cards.values() if c.get("status") == "ACTIVE"]
+    return {"id": member["id"], "name": member["name"], "active": active,
+            "arrangement_id": p.get("id") if p.get("enabled") else None,
+            "ledger_mode": p.get("ledger_mode"), "parent_card_linked": bool(p.get("lithic_parent_card_token")),
+            "parent_card_last_four": p.get("parent_card_last_four"),
+            "active_cards": len(live), "lithic_cards": sum(1 for c in live if c.get("lithic_card_token")),
+            "removed_cards": sum(1 for c in cards.values() if c.get("status") == "REVOKED")}
+
+
+def _require_sql():
+    from occlet_sql_store import enabled
+    if not enabled():
+        raise HTTPException(409, "Start PostgreSQL and configure DATABASE_URL")
+
+
+@app.get("/api/lab/members")
+def lab_members():
+    from occlet_sql_store import list_members
+    _require_sql()
+    with _lock:
+        out = []
+        for r in list_members():
+            live = r["id"] == _member["id"]
+            out.append(_member_summary(r, {"parent": _parent, "cards": _cards} if live else r["snapshot"], live))
+        if not any(m["active"] for m in out):
+            out.insert(0, _member_summary(_member, {"parent": _parent, "cards": _cards}, True))
+        return {"active_member_id": _member["id"], "members": out}
+
+
+def _switch_member(member: dict, snapshot: dict | None) -> None:
+    """Save the outgoing member, load the incoming one. Caller holds _lock."""
+    from occlet_sql_store import set_active_member
+    _persist_now()                   # outgoing member's saved copy is now current
+    _restore_runtime(snapshot, member)
+    _persist_now()                   # incoming member becomes the live runtime copy
+    set_active_member(member["id"])
+
+
+@app.post("/api/lab/members/{member_id}/activate")
+def lab_activate_member(member_id: str):
+    from occlet_sql_store import list_members
+    _require_sql()
+    with _lock:
+        if member_id != _member["id"]:
+            rows = {r["id"]: r for r in list_members()}
+            if member_id not in rows:
+                raise HTTPException(404, "Unknown test member")
+            _switch_member({"id": member_id, "name": rows[member_id]["name"]}, rows[member_id]["snapshot"])
+            log("Lab test member", "ACTIVE", f"Switched to {_member['name']} ({member_id})")
+        return lab_members()
+
+
+@app.post("/api/lab/members")
+def lab_create_member(req: LabMemberCreate):
+    """One step: new member + funding arrangement + Occlet ledger (+ W4 trip) (+ Lithic parent card)."""
+    from occlet_sql_store import create_member
+    from occlet_demo_ledger import initialize, LedgerRejected
+    from occlet_w4 import seed_trip
+    from lithic_client import LithicError, create_test_card, lithic_request
+    _require_sql()
+    if req.lithic_parent == "LINK" and not (req.account_token and req.card_token):
+        raise HTTPException(400, "Linking needs both the Lithic account token and card token")
+    if req.trip_protection_cents > req.opening_balance_cents:
+        raise HTTPException(400, "Trip protection cannot exceed the opening balance")
+    with _lock:
+        member = {"id": "mbr_" + secrets.token_hex(4), "name": req.display_name.strip()}
+        create_member(member)
+        _switch_member(member, None)
+        _parent.update({"id": "arr_" + member["id"] + "_" + uuid.uuid4().hex[:12], "enabled": True,
+                        "status": "ACTIVE", "credit_limit_cents": req.opening_balance_cents,
+                        "max_transaction_cents": req.opening_balance_cents,
+                        "monthly_policy_limit_cents": req.opening_balance_cents})
+        try:
+            initialize(_parent["id"], req.opening_balance_cents, _parent)
+            if req.trip_protection_cents:
+                seed_trip(_parent["id"], req.trip_protection_cents)
+        except LedgerRejected as exc:
+            raise HTTPException(409, exc.code) from None
+        _parent["ledger_mode"] = "OCCLET_SQL_LEDGER"
+        warning = None
+        try:
+            if req.lithic_parent == "CREATE":
+                card = create_test_card(memo="OCCLET-PARENT " + member["name"][:40])
+                _parent.update(lithic_account_token=card.get("account_token"),
+                               lithic_parent_card_token=card["token"], parent_card_last_four=card["last_four"])
+            elif req.lithic_parent == "LINK":
+                found = lithic_request("GET", f"/cards/{req.card_token}")
+                if (str(found.get("account_token")) != str(req.account_token)
+                        or found.get("state") not in ("OPEN", "PAUSED")):
+                    raise LithicError("Lithic card/account mismatch or card not open")
+                _parent.update(lithic_account_token=str(req.account_token),
+                               lithic_parent_card_token=str(req.card_token),
+                               parent_card_last_four=found.get("last_four"))
+        except LithicError as exc:
+            warning = f"Member created without a Lithic parent card: {exc}"
+        log("Lab test member", "CREATED",
+            f"{member['name']} ({member['id']}); ${req.opening_balance_cents / 100:,.2f} ledger; "
+            f"trip ${req.trip_protection_cents / 100:,.2f}; Lithic parent "
+            + (_parent.get("parent_card_last_four") or "not linked"))
+        _persist_now()
+        return {"member": member, "warning": warning, **lab_members()}
+
 
 @app.get("/api/member/parent/lithic/cards")
 def list_lithic_parent_candidates():

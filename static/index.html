@@ -45,6 +45,40 @@
   <header><div><div class="brand">OCCLET / LABS</div><h1>Agentic card authorization lab</h1><p style="margin:6px 0 0">One shared funding arrangement and agent policy model. Compare Local SQL execution with Lithic sandbox authorization.</p></div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a href="/member/delegated" style="color:#bff1dd;border:1px solid #467c70;border-radius:8px;padding:10px 13px;text-decoration:none;font-size:12px;font-weight:700">↗ Member experience</a><div class="pill">LOCAL + LITHIC / TWO FLOWS + W4</div></div></header>
   <div class="warning"><strong>Security boundary:</strong> Lithic is test-only. The optional Capital One path releases a merchant website URL after a signed agent request is approved; it is NOT a Capital One authorization or decline. Only enter your real virtual-card number on the merchant’s own HTTPS checkout, never in Occlet. Local member controls are unauthenticated; never expose port 8000.</div>
   <div class="mode-note" role="status"><strong>Two execution environments plus a W4 use case.</strong> Local uses an Occlet PostgreSQL demo ledger; Lithic uses sandbox card APIs and ASA. The W4 tab runs protected-intent spending against the same local ledger. Switching tabs does not duplicate funds or create cards.</div>
+  <section class="card" id="lm-panel" style="margin-bottom:18px">
+    <div class="split"><h2>Test members · create, associate Lithic, manage delegated cards</h2><button id="lm-refresh" class="secondary" type="button">Refresh</button></div>
+    <p class="help">Each test member has its own funding arrangement, Occlet ledger, optional W4 trip protection and Lithic parent card. Only the <strong>active</strong> member's cards authorize; the Beside member page and every tab below show the active member. A switched-out member's Lithic cards decline as unknown until you switch back.</p>
+    <div id="lm-members" class="events" style="max-height:none"><p class="meta">Loading test members…</p></div>
+    <div id="lm-associate" class="row" style="margin-top:10px" hidden>
+      <label for="lm-assoc-card" style="margin:0">Associate a Lithic parent card with <span id="lm-active-name">the active member</span></label>
+      <select id="lm-assoc-card" style="min-width:280px"><option value="">Choose “Find Lithic cards”</option></select>
+      <button id="lm-assoc-find" type="button" class="secondary">Find Lithic cards</button><button id="lm-assoc-go" type="button">Associate selected card</button><button id="lm-assoc-new" type="button" class="secondary">Create new Lithic parent card</button>
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <form id="lm-create" class="card" style="margin:0">
+        <h3 style="margin-top:0">1 · Create test member</h3>
+        <label for="lm-name">Member name</label><input id="lm-name" maxlength="80" value="Test member" required />
+        <div class="inputs"><div><label for="lm-balance">Opening balance ($)</label><input id="lm-balance" type="number" min="1" step="0.01" value="500" /></div><div><label for="lm-trip">W4 trip protection ($)</label><input id="lm-trip" type="number" min="0" step="0.01" value="300" /></div></div>
+        <label for="lm-lithic">Lithic parent card</label>
+        <select id="lm-lithic"><option value="CREATE">Create a new Lithic sandbox card</option><option value="LINK">Associate an existing Lithic card</option><option value="NONE">None (local ledger only)</option></select>
+        <div id="lm-link-fields" hidden><label for="lm-link-card">Existing Lithic sandbox card</label><select id="lm-link-card"><option value="">Choose “Find Lithic cards”</option></select><div class="row" style="margin-top:8px"><button id="lm-find" type="button" class="secondary">Find Lithic cards</button></div></div>
+        <div class="row" style="margin-top:12px"><button id="lm-create-go" type="submit">Create and switch to member</button></div>
+        <p class="help">Creates the member, a funding arrangement, an Occlet PostgreSQL ledger with the opening balance, the W4 trip (yield off) and the Lithic parent card, then makes it active.</p>
+      </form>
+      <form id="lm-card" class="card" style="margin:0">
+        <h3 style="margin-top:0">2 · Delegated card for <span id="lm-active-name-2">the active member</span></h3>
+        <div class="inputs" style="grid-template-columns:1fr 1fr"><div><label for="lm-cname">Delegate name</label><input id="lm-cname" maxlength="100" value="Grocery assistant" required /></div><div><label for="lm-purpose">Purpose</label><select id="lm-purpose"><option value="GROCERIES">Household groceries</option><option value="TICKETS">Event tickets</option></select></div></div>
+        <label for="lm-goal">What may the delegate buy?</label><input id="lm-goal" maxlength="240" value="Buy weekly household groceries" required />
+        <div class="inputs"><div><label for="lm-max">Per purchase ($)</label><input id="lm-max" type="number" min="0.01" step="0.01" value="120" /></div><div><label for="lm-budget">Budget ($)</label><input id="lm-budget" type="number" min="0.01" step="0.01" value="300" /></div><div><label for="lm-auto">Auto-approve ≤ ($)</label><input id="lm-auto" type="number" min="0.01" step="0.01" value="25" /></div></div>
+        <label for="lm-flow">Agent authorization</label><select id="lm-flow"><option value="SIGNED_INTENT_REQUIRED">Flow A · signed agent intent</option><option value="CARD_BOUND_NETWORK">Flow B · card-bound network</option></select>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="lm-on-lithic" type="checkbox" checked style="width:auto" /> Issue on Lithic (needs an associated parent card)</label>
+        <div class="row" style="margin-top:12px"><button id="lm-card-go" type="submit">Create delegated card</button></div>
+      </form>
+    </div>
+    <h3>3 · Delegated cards · test purchase or remove</h3>
+    <div id="lm-cards" class="events" style="max-height:none"><p class="meta">Loading…</p></div>
+    <div id="lm-feedback" class="notice" aria-live="polite" style="min-height:auto">Remove = revoke in Occlet + close its Lithic card. History stays.</div>
+  </section>
   <section class="card" id="admin-hold-review" style="margin-bottom:18px">
     <div class="split"><h2>Admin operations · Member hold-release requests</h2><button id="admin-review-refresh" class="secondary" type="button">Refresh requests</button></div>
     <p class="help">Card linking, Lithic issuance and ledger setup remain in the engineering lab below. Members request hold review in Beside. Only an admin/processor may reverse a local demo hold; real Lithic transactions must follow network reversal events.</p>
@@ -56,6 +90,7 @@
     <button type="button" id="tab-lithic-button" class="mode-tab" role="tab" aria-controls="panel-lithic" aria-selected="false" tabindex="-1" data-tab="lithic"><span class="tab-icon">↗</span> Lithic Sandbox <small>Test cards + ASA callbacks</small></button>
     <button type="button" id="tab-w4-button" class="mode-tab" role="tab" aria-controls="panel-w4" aria-selected="false" tabindex="-1" data-tab="w4"><span class="tab-icon">◈</span> Use Cases · W4 <small>Protected trip + parent-card purchase</small></button>
   </nav>
+  <details id="lm-advanced" style="margin:0 0 16px"><summary style="cursor:pointer;font-weight:700;padding:8px 0">Advanced · manual arrangement, agent registration and intent steps (engineering)</summary>
   <div class="shared-heading" id="shared-heading"><div><span class="eyebrow">Shared setup · applies to both tabs</span><h2>Member, funding arrangement and agent delegation</h2></div><p class="help">Configure once. Flow A needs a signed payment intent; Flow B uses card-bound attribution without per-purchase agent proof.</p></div>
   <div class="grid shared-grid" id="shared-config">
     <section class="card wide"><h2><span class="step">0</span> Choose the agent authorization flow</h2>
@@ -99,6 +134,7 @@
       <div class="help">Flow A: try $20 (automatic), $75 (member approval), or $1,100 (over-limit when parent max is $1,000). Flow B skips this step entirely.</div>
     </section>
   </div>
+  </details>
   <section id="panel-local" class="mode-panel" role="tabpanel" aria-labelledby="tab-local-button" tabindex="0">
     <div class="grid">
     <section class="card wide mode-intro"><div class="eyebrow">Local execution</div><h2>PostgreSQL + local authorization simulation</h2><p>Run the demo without Lithic access: initialize one shared SQL funding ledger, send either signed-intent or direct network messages, and inspect holds, settlement, or reversals. No live financial transfers occur.</p><div class="step-strip"><span>1 · Initialize SQL ledger</span><span>2 · Execute Flow A or B</span><span>3 · Inspect / clear holds</span></div></section>
@@ -188,6 +224,10 @@
         <div class="row"><button id="w4-decline" class="danger">1 · Attempt $350 groceries</button><button id="w4-release" class="secondary">2 · Member releases $150 trip protection</button><button id="w4-retry">3 · Retry $350 purchase</button></div>
         <div id="w4-decision" class="notice">The first $350 attempt should be declined even though the financial balance is $500.</div>
         <div class="row" style="margin-top:12px"><button id="w4-clear" class="secondary">4 · Settle $345 (release unused $5)</button><button id="w4-reverse" class="secondary">Alternative: reverse $350 hold</button></div>
+      </section>
+      <section class="card wide"><h2><span class="step">L</span> Rule evaluation · Level 1 errand card check → Level 2 enhanced authorization</h2>
+        <p class="help">Every parent-card attempt on this W4 arrangement (local buttons above, or Lithic ASA below) is evaluated in two layers. <strong>Level 1</strong> runs hard rules in a fixed order; the first failure declines. <strong>Level 2</strong> runs only when Level 1 passes and can only tighten. The SQL row-locked authorization stays the financial authority.</p>
+        <div id="w4-layers"><p class="meta">No parent-card authorization on this W4 arrangement yet.</p></div>
       </section>
       <section class="card wide"><h2><span class="step">W3</span> Same W4 using Lithic ASA and signed clearing events</h2>
         <p class="help">First link your existing Lithic sandbox PARENT card from the Lithic tab. The simulator sends the $350 card authorization to Occlet ASA; the same PostgreSQL W4 rule runs. After releasing protection, retry the Lithic simulation to approve and reserve once.</p>
@@ -394,6 +434,7 @@ ${r.reason}.` ,r.decision==='APPROVED');
     $('w4-room').textContent=money(r.free_to_spend_cents);
     $('w4-hold').textContent=money(r.balance.held_cents);
     $('w4-status').textContent=`Parent arrangement ${r.arrangement_id} • yield ${r.yield_enabled?'ON':'OFF'} • available ${money(r.balance.available_cents)} • trip protection ${money(r.protected_cents)} • room ${money(r.free_to_spend_cents)} • Lithic parent linked ${r.lithic_parent_linked?'YES':'NO'}`;
+    window.occletRenderLayers&&window.occletRenderLayers(r.latest_layers);
     $('w4-history').textContent=JSON.stringify({decision_evidence:r.decisions,member_permission_releases:r.releases,authorization_holds:r.balance.authorizations,financial_journals:r.balance.journal_lines,lithic_transaction_events:r.lithic_events},null,2);
   }
   async function w4Reload(){const r=await api('/api/use-cases/w4/status');w4Render(r);return r;}
@@ -409,6 +450,7 @@ ${r.reason}.` ,r.decision==='APPROVED');
     if(r.decision==='APPROVED')w4LastRef=r.authorization_ref;
     w4Render({...r.w4,lithic_parent_linked:!!(await api('/api/state')).parent.lithic_parent_card_token});
     $('w4-decision').textContent=`W4 ${r.decision} • ${r.reason}\nRequest $350.00 on member's own parent card\n${r.decision==='DECLINED'?'No hold and no ledger journal created.':'One $350 hold placed against parent available balance.'}`;
+    window.occletRenderLayers&&window.occletRenderLayers(r.layers?{...r.layers,source:'W4_LOCAL_PARENT_CARD'}:null);
     display('W4 '+r.decision+' — '+r.reason,r.decision==='APPROVED');
   }
   $('w4-decline').addEventListener('click',()=>run(w4Purchase));
@@ -433,7 +475,7 @@ ${r.reason}.` ,r.decision==='APPROVED');
     const r=await api('/api/member/parent/lithic/simulate',{merchant_id:'GROCERY_101',amount_cents:35000});
     w4LastLithicTx=r.transaction_token||null;
     $('w4-lithic-info').textContent=`Submitted W4 parent-card purchase to Lithic sandbox. Transaction: ${w4LastLithicTx||'pending'}. Check result after ASA; first should decline PROTECTED_BY_MEMBER. Once protection is released, resend to authorize. A separate signed Events API webhook handles clearing or reversal.`;
-    await w4Reload();display('Lithic sandbox parent transaction submitted; pending ASA decision.');
+    await new Promise(res=>setTimeout(res,3000));await w4Reload();display('Lithic sandbox parent transaction submitted. The rule evaluation shows the ASA decision once Lithic has called Occlet (use Refresh if it is not there yet).');
   }));
   $('w4-lithic-result').addEventListener('click',()=>run(async()=>{
     if(!w4LastLithicTx)throw Error('Simulate a W4 transaction through Lithic first.');
@@ -454,4 +496,5 @@ row.append(name,status,control);area.append(row)}}catch(e){message.textContent='
 document.getElementById('admin-review-refresh').onclick=render;
 })();
 </script>
+<script src="/member/assets/lab-members.js"></script>
 </body></html>

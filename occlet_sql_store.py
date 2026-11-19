@@ -30,6 +30,7 @@ def initialize() -> None:
         conn.execute((Path(__file__).parent / 'db' / '001_arrangements.sql').read_text())
         conn.execute((Path(__file__).parent / 'db' / '002_occlet_local_ledger.sql').read_text())
         conn.execute((Path(__file__).parent / 'db' / '003_w4_protection_and_events.sql').read_text())
+        conn.execute((Path(__file__).parent / 'db' / '004_member_profiles.sql').read_text())
 
 
 def load_runtime() -> dict | None:
@@ -42,7 +43,7 @@ def load_runtime() -> dict | None:
 
 def persist_runtime(*, parent: dict, agents: dict, cards: dict, intents: dict,
                     nonces: set, network_refs: dict, lithic_refs: dict,
-                    events: list, auth_traces: list) -> None:
+                    events: list, auth_traces: list, member: dict | None = None) -> None:
     if not enabled():
         return
     # Never persist temporary bearer payment handles, even in sandbox.
@@ -56,9 +57,12 @@ def persist_runtime(*, parent: dict, agents: dict, cards: dict, intents: dict,
         auth.pop('payment_token', None)
     snapshot = dict(parent=parent, agents=agents, cards=cards, intents=clean_intents,
                     nonces=[list(x) for x in nonces], network_refs=clean_refs,
-                    lithic_refs=lithic_refs, events=events, auth_traces=auth_traces)
+                    lithic_refs=lithic_refs, events=events, auth_traces=auth_traces,
+                    member=member or DEFAULT_MEMBER)
     p = parent
+    member_id = (member or DEFAULT_MEMBER)['id']
     with _connect() as conn:
+        _ensure_member(conn, member or DEFAULT_MEMBER)
         # Normalize arrangement data and preserve decision evidence.
         # Relational rows are the SQL representation; snapshot restores demo cache.
         # UPSERT rather than deleting/reinserting: the audit and balance history
@@ -73,7 +77,7 @@ def persist_runtime(*, parent: dict, agents: dict, cards: dict, intents: dict,
               lithic_account_token=EXCLUDED.lithic_account_token,
               lithic_issuing_financial_account_token=EXCLUDED.lithic_issuing_financial_account_token,
               parent_policy=EXCLUDED.parent_policy, updated_at=now()""",
-              (p['id'], 'member_demo', p.get('product_code','DEBIT_SPENDING'),p['status'],
+              (p['id'], member_id, p.get('product_code','DEBIT_SPENDING'),p['status'],
                p.get('ledger_mode','DEMO_MIRROR'),p.get('lithic_account_token'),
                p.get('lithic_financial_account_token'),json.dumps(dict(
                    max_transaction_cents=p['max_transaction_cents'],
@@ -87,7 +91,7 @@ def persist_runtime(*, parent: dict, agents: dict, cards: dict, intents: dict,
               key_fingerprint=EXCLUDED.key_fingerprint, purpose=EXCLUDED.purpose,
               purchase_goal=EXCLUDED.purchase_goal, registered_limits=EXCLUDED.registered_limits,
               updated_at=now()""",
-              (a['agent_id'],'member_demo',a['name'],a['public_key_b64'],a['key_fingerprint'],
+              (a['agent_id'],member_id,a['name'],a['public_key_b64'],a['key_fingerprint'],
                a.get('purpose'),a.get('purchase_goal'),json.dumps(a.get('registered_limits'))))
         if p.get('enabled') and p.get('lithic_parent_card_token'):
             conn.execute("""INSERT INTO payment_instruments
@@ -170,6 +174,57 @@ def persist_runtime(*, parent: dict, agents: dict, cards: dict, intents: dict,
         conn.execute("""INSERT INTO occlet_demo_runtime(singleton,snapshot) VALUES (true,%s::jsonb)
                       ON CONFLICT (singleton) DO UPDATE SET snapshot=EXCLUDED.snapshot, updated_at=now()""",
                      (json.dumps(snapshot),))
+        # The member's own saved copy, used when switching back to this member.
+        conn.execute('UPDATE members SET runtime_snapshot=%s::jsonb, updated_at=now() WHERE member_id=%s',
+                     (json.dumps(snapshot), member_id))
+
+
+# ---------------------------------------------------------------- test members (lab switcher)
+DEFAULT_MEMBER = {'id': 'member_demo', 'name': 'Ann Gutierrez'}
+
+
+def _ensure_member(conn, member: dict) -> None:
+    conn.execute("""INSERT INTO members(member_id, display_name) VALUES (%s, %s)
+        ON CONFLICT (member_id) DO UPDATE SET display_name=EXCLUDED.display_name, updated_at=now()""",
+        (member['id'], member['name']))
+
+
+def create_member(member: dict) -> None:
+    with _connect() as conn:
+        _ensure_member(conn, member)
+
+
+def list_members() -> list[dict]:
+    """All members with their saved snapshot (may be stale for the active member)."""
+    with _connect() as conn:
+        rows = conn.execute("""SELECT m.member_id, m.display_name, m.created_at, m.runtime_snapshot,
+                 (a.member_id IS NOT NULL) AS active
+               FROM members m LEFT JOIN occlet_demo_active_member a ON a.member_id = m.member_id
+               ORDER BY m.created_at, m.member_id""").fetchall()
+    return [{'id': r[0], 'name': r[1], 'created_at': r[2], 'snapshot': r[3], 'active': bool(r[4])} for r in rows]
+
+
+def load_member_snapshot(member_id: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute('SELECT runtime_snapshot FROM members WHERE member_id=%s', (member_id,)).fetchone()
+    if row is None:
+        raise KeyError(member_id)
+    return row[0]
+
+
+def get_active_member() -> dict | None:
+    if not enabled():
+        return None
+    with _connect() as conn:
+        row = conn.execute("""SELECT m.member_id, m.display_name FROM occlet_demo_active_member a
+               JOIN members m ON m.member_id = a.member_id""").fetchone()
+    return {'id': row[0], 'name': row[1]} if row else None
+
+
+def set_active_member(member_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("""INSERT INTO occlet_demo_active_member(singleton, member_id) VALUES (true, %s)
+            ON CONFLICT (singleton) DO UPDATE SET member_id=EXCLUDED.member_id, updated_at=now()""", (member_id,))
 
 
 def save_balance_observation(arrangement_id: str, balance: dict) -> None:
@@ -203,6 +258,9 @@ def reset_sql_registry() -> None:
                      'delegation_usage, delegation_grants, payment_instruments, agent_identities, '
                      'lithic_balance_observations, funding_arrangements, occlet_demo_runtime '
                      'RESTART IDENTITY CASCADE')
+        conn.execute("UPDATE occlet_demo_active_member SET member_id='member_demo', updated_at=now()")
+        conn.execute("UPDATE members SET runtime_snapshot=NULL WHERE member_id='member_demo'")
+        conn.execute("DELETE FROM members WHERE member_id <> 'member_demo'")
 
 
 def read_registry() -> dict:
