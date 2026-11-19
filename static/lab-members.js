@@ -57,6 +57,7 @@ async function loadMembers() {
       el('td', null, m.parent_card_linked ? '•••• ' + (m.parent_card_last_four || '????') : 'Not associated'),
       el('td', null, m.active_cards + ' active (' + m.lithic_cards + ' on Lithic)' + (m.removed_cards ? ' · ' + m.removed_cards + ' removed' : '')));
     const act = el('td'); const box = el('div', 'lm-actions');
+    if (m.active && m.arrangement_id) { const f = el('button', 'secondary', 'Bring available to…'); f.type = 'button'; f.onclick = () => { const v = prompt('Bring ' + m.name + "'s available balance to ($). Repays the settled amount due first, then adds funds.", '500'); if (v === null) return; run(async () => { const r = await api('/api/member/funding', { kind: 'RESTORE', target_available_cents: cents(v), reference: 'lab-' + crypto.randomUUID() }); feedback(r.entries.map(x => (x.kind === 'REPAYMENT' ? 'Repaid ' : 'Added ') + money(x.amount_cents)).join(' + ') + ' for ' + m.name + ' · available now ' + money(r.available_cents) + ' · amount due ' + money(r.amount_due_cents)); }); }; box.append(f); }
     if (!m.active) { const b = el('button', 'secondary', 'Switch to'); b.type = 'button'; b.onclick = () => run(async () => { await api('/api/lab/members/' + encodeURIComponent(m.id) + '/activate', {}); location.reload(); }); box.append(b); }
     act.append(box); tr.append(act); t.append(tr);
     if (m.active) { $('lm-active-name').textContent = m.name; $('lm-active-name-2').textContent = m.name; $('lm-associate').hidden = m.parent_card_linked || !m.arrangement_id; }

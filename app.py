@@ -574,7 +574,8 @@ def member_experience():
                 # Member "amount due" on the parent card: settled purchases + pending holds
                 # across the shared arrangement (parent and delegated cards).
                 "settled_cents":book.get("settled_cents",0) if book else None,
-                "amount_due_cents":(book.get("settled_cents",0)+book["held_cents"]) if book else None,
+                "repaid_cents":book.get("repaid_cents",0) if book else None,
+                "amount_due_cents":(max(0,book.get("settled_cents",0)-book.get("repaid_cents",0))+book["held_cents"]) if book else None,
                 "spendable_after_protection_cents":protected["free_to_spend_cents"] if protected else (book["available_cents"] if book else None),
                 "lithic_account_token":parent.get("lithic_account_token"),
                 "parent_card_last_four":parent.get("parent_card_last_four"),
@@ -1497,6 +1498,62 @@ def demo_ledger_topup(req: DemoLedgerTopUp):
             raise HTTPException(409, exc.code) from None
         log("Occlet synthetic funding", "TOPUP", f"{req.reference}: {req.amount_cents} cents added to demo book")
         return result
+
+class MemberFunding(BaseModel):
+    kind: Literal["TOP_UP", "REPAYMENT", "RESTORE"]
+    amount_cents: int | None = Field(default=None, gt=0, le=100_000_000)
+    target_available_cents: int | None = Field(default=None, gt=0, le=100_000_000)
+    reference: str = Field(min_length=4, max_length=100)
+
+
+@app.post("/api/member/funding")
+def member_funding(req: MemberFunding):
+    """Synthetic money in for the active member's parent card.
+
+    TOP_UP adds funds; REPAYMENT pays down the settled amount due (default: all of it);
+    RESTORE brings the available balance up to a target, repaying first, then adding funds.
+    """
+    from occlet_demo_ledger import fund, summary, LedgerRejected
+    m = lambda c: f"${c / 100:,.2f}"
+    with _lock:
+        if _parent.get("ledger_mode") != "OCCLET_SQL_LEDGER":
+            raise HTTPException(409, "Set up the Occlet PostgreSQL ledger for this member first")
+        arr = _parent["id"]
+        book = summary(arr)
+        outstanding = max(0, book.get("settled_cents", 0) - book.get("repaid_cents", 0))
+        if req.kind == "TOP_UP":
+            if not req.amount_cents:
+                raise HTTPException(400, "Enter an amount to add")
+            plan = [("TOP_UP", req.amount_cents)]
+        elif req.kind == "REPAYMENT":
+            amount = req.amount_cents or outstanding
+            if not amount:
+                raise HTTPException(409, "Nothing to repay: there is no settled amount due")
+            plan = [("REPAYMENT", amount)]
+        else:
+            if not req.target_available_cents:
+                raise HTTPException(400, "Enter the target available balance")
+            needed = req.target_available_cents - book["available_cents"]
+            if needed <= 0:
+                raise HTTPException(409, f"Available is already {m(book['available_cents'])}")
+            repay = min(needed, outstanding)
+            plan = [(k, a) for k, a in (("REPAYMENT", repay), ("TOP_UP", needed - repay)) if a > 0]
+        done = []
+        try:
+            for kind, amount in plan:
+                fund(arr, amount, f"{req.reference}:{kind.lower()}", kind)
+                done.append({"kind": kind, "amount_cents": amount})
+        except LedgerRejected as exc:
+            raise HTTPException(409, exc.code) from None
+        after = summary(arr)
+        log("Member funding", "+".join(d["kind"] for d in done),
+            ", ".join(f"{d['kind'].lower()} {m(d['amount_cents'])}" for d in done)
+            + f"; available now {m(after['available_cents'])} (synthetic demo money)")
+        return {"entries": done, "available_cents": after["available_cents"], "cash_cents": after["cash_cents"],
+                "held_cents": after["held_cents"], "settled_cents": after.get("settled_cents", 0),
+                "repaid_cents": after.get("repaid_cents", 0),
+                "amount_due_cents": max(0, after.get("settled_cents", 0) - after.get("repaid_cents", 0)) + after["held_cents"]}
+
 
 # Link an ALREADY-ISSUED Lithic sandbox parent card without creating another card.
 class ExistingLithicParent(BaseModel):

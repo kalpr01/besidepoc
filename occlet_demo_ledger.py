@@ -116,6 +116,7 @@ def summary(arrangement_id: str, *, conn=None) -> dict:
     # All-time settled spend (not limited to the recent rows above): member "amount due".
     settled=conn.execute('''SELECT COALESCE(SUM(clearing_amount_cents),0) FROM demo_ledger_authorizations
         WHERE arrangement_id=%s AND status='CLEARED' ''',(arrangement_id,)).fetchone()[0]
+    repaid=_repaid(conn, arrangement_id)
     journals=conn.execute('''SELECT j.journal_ref,j.kind,j.created_at,
             e.account_code,e.side,e.amount_cents FROM demo_ledger_journals j
          JOIN demo_ledger_entries e ON e.journal_id=j.id
@@ -126,6 +127,7 @@ def summary(arrangement_id: str, *, conn=None) -> dict:
       'held_cents':balances.get('AUTH_HOLDS',0),
       'cash_cents':balances.get('CASH',0),
       'settled_cents':int(settled or 0),
+      'repaid_cents':repaid,
       'authorizations':[dict(zip(('reference','card_reference','merchant','amount_cents','clearing_amount_cents','status','created_at'),r)) for r in recent],
       'journal_lines':[dict(zip(('journal_ref','kind','created_at','account','side','amount_cents'),r)) for r in journals]}
 
@@ -275,17 +277,43 @@ def clear(arrangement_id: str, reference: str, settled_cents: int) -> dict:
         return {'status':'CLEARED','idempotent':False,'authorization':auth,'balance':summary(arrangement_id, conn=conn)}
 
 
-def topup(arrangement_id: str, amount_cents: int, reference: str) -> dict:
-    """Synthetic demo funding. Never represents moving actual money."""
+def _repaid(conn, arrangement_id: str) -> int:
+    """All-time member repayments on the parent card (REPAYMENT journals, cash side)."""
+    return int(conn.execute('''SELECT COALESCE(SUM(e.amount_cents),0) FROM demo_ledger_journals j
+        JOIN demo_ledger_entries e ON e.journal_id=j.id
+        WHERE j.arrangement_id=%s AND j.kind='REPAYMENT' AND e.account_code='CASH' AND e.side='DEBIT' ''',
+        (arrangement_id,)).fetchone()[0] or 0)
+
+
+def fund(arrangement_id: str, amount_cents: int, reference: str, kind: str = 'TOP_UP') -> dict:
+    """Synthetic money in: TOP_UP (add funds) or REPAYMENT (pay down the settled amount due).
+
+    Both post the same balanced journal (CASH debit / AVAILABLE credit). A repayment can
+    never exceed the settled, unrepaid amount due; pending holds are not repayable.
+    Never represents moving actual money.
+    """
     _require_db()
+    if kind not in ('TOP_UP', 'REPAYMENT'):
+        raise LedgerRejected('INVALID_FUNDING_KIND')
     if not isinstance(amount_cents,int) or isinstance(amount_cents,bool) or not (0<amount_cents<=100_000_000):
-        raise LedgerRejected('INVALID_TOPUP')
+        raise LedgerRejected('INVALID_TOPUP' if kind == 'TOP_UP' else 'INVALID_REPAYMENT')
+    ref = ('topup:' if kind == 'TOP_UP' else 'repay:') + reference
     with _connect() as conn:
         _lock_book(conn,arrangement_id)
-        existing=conn.execute('''SELECT id FROM demo_ledger_journals
-           WHERE arrangement_id=%s AND journal_ref=%s''',(arrangement_id,'topup:'+reference)).fetchone()
-        if existing:
+        if conn.execute('''SELECT id FROM demo_ledger_journals WHERE arrangement_id=%s AND journal_ref=%s''',
+                        (arrangement_id,ref)).fetchone():
             raise LedgerRejected('REFERENCE_ALREADY_USED')
-        _write_journal(conn,arrangement_id,'topup:'+reference,'TOP_UP',
+        if kind == 'REPAYMENT':
+            settled = conn.execute('''SELECT COALESCE(SUM(clearing_amount_cents),0) FROM demo_ledger_authorizations
+                WHERE arrangement_id=%s AND status='CLEARED' ''',(arrangement_id,)).fetchone()[0] or 0
+            if amount_cents > int(settled) - _repaid(conn, arrangement_id):
+                raise LedgerRejected('REPAYMENT_EXCEEDS_AMOUNT_DUE')
+        _write_journal(conn,arrangement_id,ref,kind,
                        [('CASH','DEBIT',amount_cents),('AVAILABLE','CREDIT',amount_cents)])
-        return {'status':'FUNDED_WITH_SYNTHETIC_CENTS','balance':summary(arrangement_id, conn=conn)}
+        return {'status':'FUNDED_WITH_SYNTHETIC_CENTS' if kind == 'TOP_UP' else 'REPAID_WITH_SYNTHETIC_CENTS',
+                'balance':summary(arrangement_id, conn=conn)}
+
+
+def topup(arrangement_id: str, amount_cents: int, reference: str) -> dict:
+    """Synthetic demo funding. Never represents moving actual money."""
+    return fund(arrangement_id, amount_cents, reference, 'TOP_UP')

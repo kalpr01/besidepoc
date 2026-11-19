@@ -118,3 +118,25 @@ def test_member_page_and_lab_wiring():
         assert needle in lab
     html = client.get('/').text
     assert 'id="lm-panel"' in html and 'id="w4-layers"' in html and 'lab-members.js' in html
+
+
+def test_bring_available_to_target_repays_first_then_adds_funds(monkeypatch):
+    import occlet_demo_ledger
+    with demo._lock:
+        demo._parent.clear(); demo._parent.update(demo.default_parent())
+        demo._parent.update(enabled=True, id='arr_fund', ledger_mode='OCCLET_SQL_LEDGER')
+    book = {'available_cents': 15500, 'cash_cents': 15500, 'held_cents': 0,
+            'settled_cents': 10000, 'repaid_cents': 0, 'authorizations': []}
+    posted = []
+    def fake_fund(arr, amount, ref, kind):
+        posted.append((kind, amount))
+        book['available_cents'] += amount; book['cash_cents'] += amount
+        if kind == 'REPAYMENT':
+            book['repaid_cents'] += amount
+    monkeypatch.setattr(occlet_demo_ledger, 'summary', lambda arr: dict(book))
+    monkeypatch.setattr(occlet_demo_ledger, 'fund', fake_fund)
+    r = client.post('/api/member/funding', json={'kind': 'RESTORE', 'target_available_cents': 50000,
+                                                 'reference': 'test-split'})
+    assert r.status_code == 200, r.text
+    assert posted == [('REPAYMENT', 10000), ('TOP_UP', 24500)]
+    assert r.json()['available_cents'] == 50000 and r.json()['amount_due_cents'] == 0

@@ -31,6 +31,7 @@ def initialize() -> None:
         conn.execute((Path(__file__).parent / 'db' / '002_occlet_local_ledger.sql').read_text())
         conn.execute((Path(__file__).parent / 'db' / '003_w4_protection_and_events.sql').read_text())
         conn.execute((Path(__file__).parent / 'db' / '004_member_profiles.sql').read_text())
+        conn.execute((Path(__file__).parent / 'db' / '005_repayments.sql').read_text())
 
 
 def load_runtime() -> dict | None:
