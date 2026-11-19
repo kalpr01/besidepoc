@@ -215,11 +215,27 @@ smoke_test() {
 }
 
 cmd_restart() {
+  # A revision *restart* keeps the Key Vault secret values cached for that revision (up to ~30 min),
+  # so changed secrets (e.g. the Lithic whsec_ values) are not picked up. Create a new revision instead.
   load_names
-  local rev
-  rev="$(az containerapp show -n "$APP" -g "$RG" --query properties.latestRevisionName -o tsv)"
-  log "Restart revision $rev (reloads Key Vault secrets)"
-  az containerapp revision restart -n "$APP" -g "$RG" --revision "$rev" -o none
+  local app_id tmp suffix i latest="" ready="" state=""
+  suffix="s$(date -u +%m%d%H%M%S)"
+  log "New revision ${APP}--${suffix} (same images, fresh Key Vault secrets)"
+  app_id="$(az containerapp show -n "$APP" -g "$RG" --query id -o tsv)"
+  tmp="$(mktemp -d)"
+  az rest --method get --url "https://management.azure.com${app_id}?api-version=2024-03-01" -o json > "$tmp/app.json"
+  jq --arg s "$suffix" '{properties: {template: (.properties.template | .revisionSuffix = $s)}}' "$tmp/app.json" > "$tmp/patch.json"
+  az rest --method patch --url "https://management.azure.com${app_id}?api-version=2024-03-01" \
+    --body "@$tmp/patch.json" -o none
+  rm -rf "$tmp"
+  for i in $(seq 1 60); do
+    read -r state latest ready < <(az containerapp show -n "$APP" -g "$RG" \
+      --query "[properties.provisioningState, properties.latestRevisionName, properties.latestReadyRevisionName]" -o tsv 2>/dev/null | tr '\n' ' ') || true
+    [[ "$state" == Failed ]] && die "Revision provisioning failed. Check: az containerapp revision list -n $APP -g $RG -o table"
+    if [[ "$latest" == *"--$suffix" && "$latest" == "$ready" ]]; then echo "   $latest is ready"; break; fi
+    sleep 10
+  done
+  [[ "$latest" == *"--$suffix" && "$latest" == "$ready" ]] || die "New revision not ready after 10 minutes"
   smoke_test
 }
 
