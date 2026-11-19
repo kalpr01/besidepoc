@@ -267,6 +267,45 @@ def fail(status: int, action: str, reason: str):
     raise HTTPException(status_code=status, detail=reason)
 
 
+INTENT_TTL_SECONDS = 600  # long enough to switch to the member page and approve
+
+
+def request_card_bound_approval(card: dict, merchant_id: str, amount: int) -> str:
+    """Flow B has no pre-purchase intent, so an over-threshold attempt is declined and
+    leaves a member approval request. A retry of the same card/merchant/amount after
+    the member approves consumes it once."""
+    for i in _intents.values():
+        if (i.get("flow") == FLOW_CARD_BOUND and i["card_id"] == card["id"] and i["merchant_id"] == merchant_id
+                and i["amount_cents"] == amount and i["status"] in ("AWAITING_MEMBER_APPROVAL", "READY")):
+            return i["id"]
+    approval_id = "pa_" + secrets.token_hex(7)
+    _intents[approval_id] = {"id": approval_id, "card_id": card["id"], "agent_id": card["agent_id"],
+                             "merchant_id": merchant_id, "amount_cents": amount, "flow": FLOW_CARD_BOUND,
+                             "status": "AWAITING_MEMBER_APPROVAL", "payment_token": None,
+                             "expires_at": time.time() + INTENT_TTL_SECONDS}
+    log("Delegation policy", "STEP-UP REQUIRED",
+        f"{approval_id}: card-bound ${amount / 100:.2f} at {merchant_id} declined; member approval requested")
+    return approval_id
+
+
+def card_bound_decision(card: dict, merchant_id: str, amount: int) -> tuple[str | None, dict | None, str | None]:
+    """Returns (reason, consumed_approval, approval_request_id) for a Flow B attempt."""
+    approval = None
+    if amount > card["approval_threshold_cents"]:
+        approval = next((i for i in _intents.values() if i.get("flow") == FLOW_CARD_BOUND
+                         and i["card_id"] == card["id"] and i["merchant_id"] == merchant_id
+                         and i["amount_cents"] == amount and i["status"] == "READY"), None)
+        if approval:
+            approval["status"] = "USED"  # so its reservation is not counted twice below
+    reason = card_scope_reason(card, merchant_id, amount)
+    if reason is None and amount > card["approval_threshold_cents"] and approval is None:
+        return "MEMBER_APPROVAL_REQUIRED_BEFORE_PURCHASE", None, request_card_bound_approval(card, merchant_id, amount)
+    if reason and approval:
+        approval["status"] = "READY"
+        approval = None
+    return reason, approval, None
+
+
 def ensure_expirations() -> None:
     now = time.time()
     for intent in _intents.values():
@@ -357,6 +396,12 @@ class AgentIntent(BaseModel):
 
 class Approval(BaseModel):
     approved: bool
+
+
+class AgentIntentStatus(BaseModel):
+    agent_id: str
+    timestamp_ms: int
+    signature_b64: str
 
 
 class NetworkAuth(BaseModel):
@@ -815,11 +860,11 @@ def create_intent(req: AgentIntent):
                   "merchant_id": req.merchant_id, "amount_cents": req.amount_cents,
                   "status": "AWAITING_MEMBER_APPROVAL" if need_approval else "READY",
                   "payment_token": "pt_" + secrets.token_urlsafe(22),
-                  "expires_at": time.time() + 120}
+                  "expires_at": time.time() + INTENT_TTL_SECONDS}
         _intents[intent_id] = intent
         log("Delegation policy", "STEP-UP REQUIRED" if need_approval else "APPROVED",
             f"{intent_id}: ${req.amount_cents / 100:.2f} at {req.merchant_id}; budget reserved")
-        result = {"intent_id": intent_id, "status": intent["status"], "expires_in_seconds": 120}
+        result = {"intent_id": intent_id, "status": intent["status"], "expires_in_seconds": INTENT_TTL_SECONDS}
         if not need_approval:
             result["payment_token"] = intent["payment_token"]
         return result
@@ -845,6 +890,41 @@ def approve(intent_id: str, req: Approval):
         if req.approved:
             result["payment_token"] = intent["payment_token"]
         return result
+
+
+@app.post("/api/agent/intents/{intent_id}/status")
+def agent_intent_status(intent_id: str, req: AgentIntentStatus):
+    """The agent polls its own intent with a signed request (canonical: status|intent_id|timestamp_ms).
+    The one-time payment token is returned only to the agent, only once the member has approved."""
+    with _lock:
+        ensure_expirations()
+        agent = _agents.get(req.agent_id)
+        intent = _intents.get(intent_id)
+        if not agent or not intent or intent["agent_id"] != req.agent_id:
+            fail(404, "Agent intent status", "Unknown intent for this agent")
+        if abs(int(time.time() * 1000) - req.timestamp_ms) > 60_000:
+            fail(401, "Agent authentication", "Stale signed request")
+        try:
+            Ed25519PublicKey.from_public_bytes(base64.b64decode(agent["public_key_b64"])).verify(
+                base64.b64decode(req.signature_b64, validate=True), f"status|{intent_id}|{req.timestamp_ms}".encode())
+        except (InvalidSignature, ValueError, binascii.Error):
+            fail(401, "Agent authentication", "Invalid agent signature")
+        out = {"intent_id": intent_id, "status": intent["status"], "member_approved": intent.get("member_approved")}
+        if intent["status"] == "READY":
+            out["payment_token"] = intent["payment_token"]
+        return out
+
+
+@app.get("/api/member/approvals/{approval_id}")
+def approval_status(approval_id: str):
+    """Status only (never a payment token): used to retry a card-bound purchase after approval."""
+    with _lock:
+        ensure_expirations()
+        intent = _intents.get(approval_id)
+        if not intent:
+            raise HTTPException(404, "Unknown approval request")
+        return {"id": approval_id, "status": intent["status"], "member_approved": intent.get("member_approved"),
+                "flow": intent.get("flow", FLOW_SIGNED)}
 
 
 @app.post("/api/network/authorize")
@@ -919,17 +999,17 @@ def network_direct_authorize(req: NetworkDirectAuth):
                 return old["response"]
             fail(409, "Network authorization", "Network reference already used for a different transaction")
 
+        consumed = approval_request = None
         if card is None:
             reason = "CARD_NOT_REGISTERED"
         elif card.get("authorization_flow", FLOW_SIGNED) != FLOW_CARD_BOUND:
             reason = "SIGNED_INTENT_REQUIRED"
         else:
-            reason = card_scope_reason(card, req.merchant_id, req.amount_cents)
-            if reason is None and req.amount_cents > card["approval_threshold_cents"]:
-                reason = "MEMBER_APPROVAL_REQUIRED_BEFORE_PURCHASE"
+            reason, consumed, approval_request = card_bound_decision(card, req.merchant_id, req.amount_cents)
 
         if reason:
             response = {"decision": "DECLINED", "reason": reason,
+                        "approval_request_id": approval_request if card else None,
                         "attribution": "CARD_BINDING_ONLY" if card else "NONE",
                         "agent_id": card["agent_id"] if card else None,
                         "network_reference": req.network_reference}
@@ -940,11 +1020,15 @@ def network_direct_authorize(req: NetworkDirectAuth):
                                     card_reference=card["id"], merchant_id=req.merchant_id)
             except LedgerRejected as exc:
                 reason = exc.code
+                if consumed:
+                    consumed["status"] = "READY"
                 response = {"decision": "DECLINED", "reason": reason,
                             "attribution": "CARD_BINDING_ONLY", "agent_id":card["agent_id"],
                             "network_reference":req.network_reference}
             else:
                 card["spent_cents"] += req.amount_cents
+                if consumed:
+                    consumed["network_reference"] = req.network_reference
                 response = {"decision": "APPROVED", "reason": "POLICY_AND_FUNDING_OK",
                         "attribution": "CARD_BINDING_ONLY", "agent_id": card["agent_id"],
                         "network_reference": req.network_reference,
@@ -1178,6 +1262,30 @@ def decide_lithic_asa(payload: dict) -> dict:
             log("Lithic ASA parent card", result, f"{tx}: ${amount / 100:.2f}; one shared funding arrangement")
     elif card is None:
         result = "UNAUTHORIZED_MERCHANT"
+    elif card.get("authorization_flow", FLOW_SIGNED) == FLOW_CARD_BOUND:
+        reason, consumed, _ = card_bound_decision(card, merchant, amount)
+        if reason:
+            result = ("INSUFFICIENT_FUNDS" if reason == "PARENT_AVAILABLE_CREDIT"
+                      else "VELOCITY_EXCEEDED" if "LIMIT" in reason or "BUDGET" in reason
+                      else "CARD_PAUSED" if "PAUSED" in reason or "REVOKED" in reason
+                      else "UNAUTHORIZED_MERCHANT")
+        else:
+            from occlet_demo_ledger import LedgerRejected
+            try:
+                reserve_parent_once("lithic:" + tx, amount, card_reference=card["id"], merchant_id=merchant)
+            except LedgerRejected as exc:
+                reason = exc.code
+                result = ledger_decline_code(exc)
+                if consumed:
+                    consumed["status"] = "READY"
+            else:
+                card["spent_cents"] += amount
+                result = "APPROVED"
+                if consumed:
+                    consumed["lithic_transaction_token"] = tx
+                log("Lithic ASA network-only", result,
+                    f"{tx}: card token maps to {card['agent_id']} • {card.get('purpose')}; "
+                    f"NO signed agent intent; ONE parent hold" + ("; member pre-approved" if consumed else ""))
     elif (scope_reason := card_scope_reason(card, merchant, amount)):
         reason = scope_reason
         result = ("INSUFFICIENT_FUNDS" if reason == "PARENT_AVAILABLE_CREDIT"

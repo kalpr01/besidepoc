@@ -149,8 +149,22 @@ $('lm-card').onsubmit = e => { e.preventDefault(); run(async () => {
 async function testPurchase(card, amount, route) {
   const merchant = (card.allowed_merchants || ['GROCERY_101'])[0];
   if (card.authorization_flow === 'CARD_BOUND_NETWORK') {
-    if (route === 'LITHIC') return lithicDecision(await api('/api/lithic/simulate', { card_id: card.id, merchant_id: merchant, amount_cents: amount }));
+    if (route === 'LITHIC') {
+      const d = await lithicDecision(await api('/api/lithic/simulate', { card_id: card.id, merchant_id: merchant, amount_cents: amount }));
+      if (!d || d.reason !== 'MEMBER_APPROVAL_REQUIRED_BEFORE_PURCHASE') return;
+      const req = (await api('/api/member/experience')).pending_approvals.find(x => x.card_id === card.id && x.amount_cents === amount && x.merchant_id === merchant);
+      if (!req) return;
+      const st = await waitForMember(amount, () => api('/api/member/approvals/' + encodeURIComponent(req.id)));
+      if (st === 'READY') return testPurchase(card, amount, route);  // Lithic retry consumes the approval
+      return;
+    }
     const r = await api('/api/network/direct/authorize', { card_reference: card.id, merchant_id: merchant, amount_cents: amount, network_reference: 'lab-' + crypto.randomUUID() });
+    if (r.approval_request_id) {
+      await refreshAll();
+      const st = await waitForMember(amount, () => api('/api/member/approvals/' + encodeURIComponent(r.approval_request_id)));
+      if (st !== 'READY') return;
+      return testPurchase(card, amount, route);  // retry consumes the member's one-time approval
+    }
     feedback('Local network authorization: ' + r.decision + ' · ' + (r.reason || 'policy passed'), r.decision !== 'APPROVED'); return refreshAll();
   }
   const key = keys.get(card.agent_id); if (!key) throw Error('This Flow A agent key is not in this browser tab. Create a new Flow A card here to test signed intents.');
@@ -160,12 +174,32 @@ async function testPurchase(card, amount, route) {
   let intent = await api('/api/agent/intents', { agent_id: card.agent_id, card_id: card.id, merchant_id: merchant, amount_cents: amount, currency: 'USD', nonce, timestamp_ms: ts, signature_b64: b64(sig) });
   let token = intent.payment_token;
   if (intent.status === 'AWAITING_MEMBER_APPROVAL') {
-    if (!confirm(money(amount) + ' is above the auto-approve limit. Approve it as the member?')) { feedback('Left awaiting member approval (see the Beside member page).', true); return refreshAll(); }
-    token = (await api('/api/member/intents/' + encodeURIComponent(intent.intent_id) + '/approval', { approved: true })).payment_token;
+    await refreshAll();
+    let last = null;
+    const st = await waitForMember(amount, async () => {
+      const t = Date.now(); const s = await crypto.subtle.sign('Ed25519', key, new TextEncoder().encode(`status|${intent.intent_id}|${t}`));
+      return (last = await api('/api/agent/intents/' + encodeURIComponent(intent.intent_id) + '/status', { agent_id: card.agent_id, timestamp_ms: t, signature_b64: b64(s) }));
+    });
+    if (st !== 'READY') return;
+    token = last.payment_token;
   }
   if (route === 'LITHIC') return lithicDecision(await api('/api/lithic/simulate', { card_id: card.id, merchant_id: merchant, amount_cents: amount }));
   const r = await api('/api/network/authorize', { payment_token: token, merchant_id: merchant, amount_cents: amount, network_reference: 'lab-' + crypto.randomUUID() });
   feedback('Signed-intent authorization: ' + r.decision + (r.reason ? ' · ' + r.reason : ''), r.decision !== 'APPROVED'); return refreshAll();
+}
+
+// Over the auto-approve limit: the member answers in Beside → Delegated Card → Member actions.
+async function waitForMember(amount, poll) {
+  const until = Date.now() + 600000;
+  while (Date.now() < until) {
+    const left = Math.round((until - Date.now()) / 1000);
+    feedback(money(amount) + ' is above the auto-approve limit. Waiting for the member: approve or decline it in Beside → Delegated Card → Member actions (' + left + 's left). This lab continues the purchase automatically.', true);
+    const r = await poll();
+    if (r.status === 'READY') { feedback('Member approved ' + money(amount) + '. Continuing the purchase…'); return 'READY'; }
+    if (r.status !== 'AWAITING_MEMBER_APPROVAL') { feedback('Purchase not completed: member approval request is ' + r.status + '.', true); await refreshAll(); return r.status; }
+    await new Promise(res => setTimeout(res, 2500));
+  }
+  feedback('Stopped waiting for the member approval.', true); return 'TIMEOUT';
 }
 
 async function lithicDecision(sim) {
@@ -176,7 +210,7 @@ async function lithicDecision(sim) {
     const v = await api('/api/member/experience');
     const hits = v.transactions.filter(x => x.reference === t || x.reference === 'lithic:' + t);
     const asa = hits.find(x => x.source === 'LITHIC_SANDBOX_ASA') || hits[0];
-    if (asa) { const ok = asa.status === 'APPROVED' || asa.status === 'AUTHORIZED'; feedback('Lithic ASA decision: ' + (ok ? 'APPROVED' : asa.status) + ' · ' + money(asa.amount_cents) + (asa.reason ? ' · ' + asa.reason : ''), !ok); return refreshAll(); }
+    if (asa) { const ok = asa.status === 'APPROVED' || asa.status === 'AUTHORIZED'; feedback('Lithic ASA decision: ' + (ok ? 'APPROVED' : asa.status) + ' · ' + money(asa.amount_cents) + (asa.reason ? ' · ' + asa.reason : ''), !ok); await refreshAll(); return asa; }
   }
   feedback('No ASA decision yet for Lithic transaction ' + t.slice(0, 8) + '…: check the ASA enrollment.', true);
 }
