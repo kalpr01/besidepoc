@@ -113,6 +113,9 @@ def summary(arrangement_id: str, *, conn=None) -> dict:
     recent=conn.execute('''SELECT authorization_ref,card_reference,merchant_id,amount_cents,
         clearing_amount_cents,status,created_at FROM demo_ledger_authorizations WHERE arrangement_id=%s
         ORDER BY created_at DESC,authorization_ref DESC LIMIT 30''',(arrangement_id,)).fetchall()
+    # All-time settled spend (not limited to the recent rows above): member "amount due".
+    settled=conn.execute('''SELECT COALESCE(SUM(clearing_amount_cents),0) FROM demo_ledger_authorizations
+        WHERE arrangement_id=%s AND status='CLEARED' ''',(arrangement_id,)).fetchone()[0]
     journals=conn.execute('''SELECT j.journal_ref,j.kind,j.created_at,
             e.account_code,e.side,e.amount_cents FROM demo_ledger_journals j
          JOIN demo_ledger_entries e ON e.journal_id=j.id
@@ -122,6 +125,7 @@ def summary(arrangement_id: str, *, conn=None) -> dict:
       'available_cents':balances.get('AVAILABLE',0),
       'held_cents':balances.get('AUTH_HOLDS',0),
       'cash_cents':balances.get('CASH',0),
+      'settled_cents':int(settled or 0),
       'authorizations':[dict(zip(('reference','card_reference','merchant','amount_cents','clearing_amount_cents','status','created_at'),r)) for r in recent],
       'journal_lines':[dict(zip(('journal_ref','kind','created_at','account','side','amount_cents'),r)) for r in journals]}
 

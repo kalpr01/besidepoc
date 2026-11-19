@@ -6351,10 +6351,11 @@ function render(){
  if(nextAnchor&&anchorTop!==null){window.scrollTo({top:window.scrollY+nextAnchor.getBoundingClientRect().top-anchorTop,behavior:'instant'});}
  else window.scrollTo({top:oldY,behavior:'instant'});
 }
+window.addEventListener('occlet:parent',()=>{try{if(current==='accounts')render()}catch(e){}});
 function renderAccounts(){
 const relations=[
  {id:'Deposit',label:'Share draft',eyebrow:'Available cash',sub:'Account ending 4102',value:state.deposit,ico:'accounts'},
- {id:'Visa',label:'Visa credit',eyebrow:'Outstanding balance',sub:'Pending hold · $300',value:state.visa,ico:'accounts'},
+ (window.besideOccletParent?{id:'Visa',label:'Visa parent card'+(window.besideOccletParent.last4?' •••• '+window.besideOccletParent.last4:''),eyebrow:'Amount due',sub:'Pending holds · '+fmt(window.besideOccletParent.held)+' · Available '+fmt(window.besideOccletParent.available),value:window.besideOccletParent.due,ico:'accounts'}:{id:'Visa',label:'Visa credit',eyebrow:'Outstanding balance',sub:'Pending hold · $300',value:state.visa,ico:'accounts'}),
  {id:'Note',label:'Honda note',eyebrow:'Remaining principal',sub:'Next installment · $412',value:state.note,ico:'journey'}
 ];
 const linkItems=[['Statements','nav:documents','documents'],['Manage cards','relationship:Visa','accounts'],['Direct deposit','info:direct','activity'],['Account settings','nav:privacy','privacy'],['Community impact','legacy:impact'],['My certificates','legacy:certificates','offers']];
@@ -6573,7 +6574,7 @@ function showRelationship(type){
  const money=(n)=>fmt(Number.isFinite(Number(n))?Number(n):0);
  const entry={
   Deposit:{title:'Share draft',subtitle:'Checking ····4102',eyebrow:'AVAILABLE TO SPEND',amount:money(state.deposit),hint:'Includes the pending Visa hold of $300.',rows:[['Account type','Share draft'],['Account number','••4102'],['Holiday Club',money(640)+' held separately']],actions:[[ 'Deposit check','action:depositCheck','primary'],['View deposit activity','related-activity:Deposit','secondary']]},
-  Visa:{title:'Visa credit',subtitle:'Credit account',eyebrow:'OUTSTANDING BALANCE',amount:money(state.visa),hint:'A $300 pending hold is separate from the outstanding balance.',rows:[['Credit limit',money(5000)],['Estimated available credit',money(Math.max(0,5000-Number(state.visa||0)-300))],['Pending hold',money(300)]],actions:[['Pay Visa','action:visaPay','primary'],['View Visa activity','related-activity:Visa','secondary'],[state.locked?'Unlock card':'Lock card','lock','secondary']]},
+  Visa:{title:window.besideOccletParent?'Visa parent card'+(window.besideOccletParent.last4?' •••• '+window.besideOccletParent.last4:''):'Visa credit',subtitle:window.besideOccletParent?'Occlet parent card · shared with delegated cards':'Credit account',...(window.besideOccletParent?{eyebrow:'AMOUNT DUE',amount:money(window.besideOccletParent.due),hint:'Settled purchases plus pending authorization holds on the parent card, including its delegated cards. Live from the Occlet PostgreSQL ledger.',rows:[['Settled purchases',money(window.besideOccletParent.settled)],['Pending holds',money(window.besideOccletParent.held)],['Available to spend',money(window.besideOccletParent.available)]]}:{eyebrow:'OUTSTANDING BALANCE',amount:money(state.visa),hint:'A $300 pending hold is separate from the outstanding balance.',rows:[['Credit limit',money(5000)],['Estimated available credit',money(Math.max(0,5000-Number(state.visa||0)-300))],['Pending hold',money(300)]]}),actions:[['Pay Visa','action:visaPay','primary'],['View Visa activity','related-activity:Visa','secondary'],[state.locked?'Unlock card':'Lock card','lock','secondary']]},
   Note:{title:'Honda note',subtitle:'Installment loan',eyebrow:'REMAINING PRINCIPAL',amount:money(state.note),hint:'Loan principal is separate from spendable cash.',rows:[['Account type','Installment loan'],['Scheduled installment',money(412)],['Balance type','Remaining principal']],actions:[['Pay note','action:notePay','primary'],['View note activity','related-activity:Note','secondary']]}
  }[type];
  if(!entry)return;

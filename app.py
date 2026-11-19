@@ -467,6 +467,10 @@ def member_experience():
                 "cash_cents":book["cash_cents"] if book else None,
                 "available_cents":book["available_cents"] if book else None,
                 "held_cents":book["held_cents"] if book else None,
+                # Member "amount due" on the parent card: settled purchases + pending holds
+                # across the shared arrangement (parent and delegated cards).
+                "settled_cents":book.get("settled_cents",0) if book else None,
+                "amount_due_cents":(book.get("settled_cents",0)+book["held_cents"]) if book else None,
                 "spendable_after_protection_cents":protected["free_to_spend_cents"] if protected else (book["available_cents"] if book else None),
                 "lithic_account_token":parent.get("lithic_account_token"),
                 "parent_card_last_four":parent.get("parent_card_last_four"),
@@ -900,6 +904,7 @@ def lithic_issue_test_card(card_id: str):
         card["lithic_card_token"] = test["token"]
         card["lithic_account_token"] = test.get("account_token")
         card["lithic_last_four"] = test.get("last_four")
+        card["alias"] = "LITHIC-" + str(test.get("last_four") or card["id"][-4:])
         log("Lithic sandbox", "CARD CREATED", f"Linked Lithic test card ending {test['last_four']} to {card['alias']}")
         return {"card_token": test["token"], "account_token": test.get("account_token"),
                 "last_four": test["last_four"], "created": True}
@@ -1368,6 +1373,28 @@ def demo_ledger_topup(req: DemoLedgerTopUp):
 class ExistingLithicParent(BaseModel):
     account_token: uuid.UUID
     card_token: uuid.UUID
+
+@app.get("/api/member/parent/lithic/cards")
+def list_lithic_parent_candidates():
+    """Sandbox cards the member can pick as the parent card. Tokens only; PAN/CVV dropped."""
+    from lithic_client import lithic_request, LithicError
+    try:
+        result = lithic_request("GET", "/cards?page_size=100")
+    except LithicError as exc:
+        raise HTTPException(502, str(exc)) from None
+    cards = []
+    for c in result.get("data") or []:
+        if c.get("state") not in ("OPEN", "PAUSED") or not c.get("token") or not c.get("account_token"):
+            continue
+        cards.append({"card_token": c["token"], "account_token": c["account_token"],
+                      "last_four": c.get("last_four"), "state": c.get("state"),
+                      "type": c.get("type"), "memo": c.get("memo"), "created": c.get("created")})
+    with _lock:
+        linked = {c["lithic_card_token"] for c in _cards.values() if c.get("lithic_card_token")}
+        parent_token = _parent.get("lithic_parent_card_token")
+    return {"cards": [c for c in cards if c["card_token"] not in linked],
+            "linked_parent_card_token": parent_token}
+
 
 @app.post("/api/member/parent/lithic/link-existing")
 def link_existing_parent_card(req: ExistingLithicParent):
