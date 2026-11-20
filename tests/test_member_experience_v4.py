@@ -52,7 +52,9 @@ def test_member_projection_has_ledger_card_and_action_inbox(monkeypatch):
         assert data['parent']['available_cents']==46500
         assert data['parent']['held_cents']==3500
         assert data['parent']['spendable_after_protection_cents']==16500
-        assert data['transactions'][0]['card_label']=='Grocery helper'
+        # Newest first: the 19:00 decline sorts ahead of the date-only ledger row.
+        assert [t['reference'] for t in data['transactions']]==['r-denied','local:r1']
+        assert data['transactions'][1]['card_label']=='Grocery helper'
         assert any(t['card_label']=='Parent card' and t['status']=='DECLINED' for t in data['transactions'])
         assert data['pending_approvals'][0]['id']=='pi_test'
         assert 'payment_token' not in data['pending_approvals'][0]

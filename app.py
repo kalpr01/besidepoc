@@ -270,6 +270,28 @@ def fail(status: int, action: str, reason: str):
 INTENT_TTL_SECONDS = 600  # long enough to switch to the member page and approve
 
 
+def _iso_ts(value):
+    """Normalise a ledger datetime (or string) to an ISO-8601 string."""
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value=value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
+    return str(value)
+
+
+def _ts_sort_key(value):
+    """Seconds since epoch for sorting; unparseable or missing timestamps sort last."""
+    try:
+        parsed=datetime.fromisoformat(str(value).replace("Z","+00:00"))
+    except ValueError:
+        return float("-inf")
+    if parsed.tzinfo is None:
+        parsed=parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
 def request_card_bound_approval(card: dict, merchant_id: str, amount: int, origin: str = "LOCAL") -> str:
     """Flow B has no pre-purchase intent, so an over-threshold attempt is declined and
     leaves a member approval request. A retry of the same card/merchant/amount after
@@ -570,7 +592,7 @@ def member_experience():
                     "card_label":card_label(entry["card_reference"]),
                     "merchant_id":entry["merchant"],"amount_cents":entry["amount_cents"],
                     "settled_cents":entry["clearing_amount_cents"],"status":entry["status"],
-                    "source":"OCCLET_SQL_LEDGER", "created_at":str(entry.get("created_at") or ""),
+                    "source":"OCCLET_SQL_LEDGER", "created_at":_iso_ts(entry.get("created_at")),
                     "can_request_release":entry["status"]=="AUTHORIZED"})
         # Only separate declines/pending attempts; SQL is the financial transaction authority.
         for trace in view["authorization_traces"]:
@@ -588,6 +610,8 @@ def member_experience():
                 "settled_cents":None,"status":trace["decision"],"source":trace["source"],
                 "reason":trace["reason"],"created_at":trace.get("at",""),
                 "can_request_release":False})
+        # Newest transaction first, across ledger rows and separate decline traces.
+        transactions.sort(key=lambda t:_ts_sort_key(t["created_at"]),reverse=True)
         # Persist requests in existing audited demo runtime events. Do not treat the
         # member request as a reversal; that requires the processor/admin workflow.
         requests=[]; seen=set()

@@ -4,6 +4,7 @@ import time
 
 from fastapi.testclient import TestClient
 
+import app as demo
 from app import app, decide_lithic_asa
 from test_dual_flows import setup_scoped, bind, asa_for
 
@@ -142,3 +143,37 @@ def test_experience_lists_intents_for_visa_activity_without_tokens():
     assert 'renderOccletVisaActivity' in html and 'occard:' in html
     js = client.get('/member/assets/beside-delegated.js').text
     assert 'besideOccletActivity' in js and 'besideOpenDelegated' in js
+
+
+def test_experience_transactions_sorted_newest_first(monkeypatch):
+    from datetime import datetime, timezone
+    with demo._lock:
+        demo._parent.clear(); demo._parent.update(demo.default_parent())
+        demo._parent.update(enabled=True, id='arr_sort', ledger_mode='OCCLET_SQL_LEDGER')
+        demo._auth_traces.clear()
+        demo._auth_traces.extend([
+            {'network_reference': 'rrn-decline-mid', 'source': 'LOCAL_NETWORK_SIMULATOR', 'decision': 'DECLINED',
+             'card_id': 'vc_x', 'mode': 'VIRTUAL_CARD', 'merchant_id': 'TICKETS_303', 'amount_cents': 900,
+             'reason': 'MERCHANT_NOT_DELEGATED', 'at': '2026-11-20T12:00:00+00:00'},
+            {'network_reference': 'rrn-decline-new', 'source': 'LOCAL_NETWORK_SIMULATOR', 'decision': 'DECLINED',
+             'card_id': 'vc_x', 'mode': 'VIRTUAL_CARD', 'merchant_id': 'TICKETS_303', 'amount_cents': 800,
+             'reason': 'MERCHANT_NOT_DELEGATED', 'at': '2026-11-20T15:00:00+00:00'}])
+    book = {'available_cents': 50000, 'cash_cents': 50000, 'held_cents': 0, 'settled_cents': 0, 'repaid_cents': 0,
+            'authorizations': [
+                {'reference': 'led-old', 'card_reference': 'PARENT_CARD', 'merchant': 'GROCERY_101',
+                 'amount_cents': 1000, 'clearing_amount_cents': None, 'status': 'AUTHORIZED',
+                 'created_at': datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)},
+                {'reference': 'led-late', 'card_reference': 'PARENT_CARD', 'merchant': 'GROCERY_101',
+                 'amount_cents': 1100, 'clearing_amount_cents': None, 'status': 'AUTHORIZED',
+                 'created_at': datetime(2026, 11, 20, 13, 30, tzinfo=timezone.utc)}]}
+    import occlet_demo_ledger, occlet_w4
+    monkeypatch.setattr(occlet_demo_ledger, 'summary', lambda arr: book)
+    monkeypatch.setattr(occlet_w4, 'overview', lambda arr: None)
+    monkeypatch.setattr(occlet_demo_ledger, 'monthly_used', lambda arr: 0)
+    r = client.get('/api/member/experience')
+    assert r.status_code == 200, r.text
+    refs = [t['reference'] for t in r.json()['transactions']]
+    with demo._lock:
+        demo._auth_traces.clear()
+        demo._parent.clear(); demo._parent.update(demo.default_parent())
+    assert refs == ['rrn-decline-new', 'led-late', 'rrn-decline-mid', 'led-old']
