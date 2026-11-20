@@ -124,3 +124,21 @@ def test_declined_lithic_event_is_acknowledged_without_ledger_effect(monkeypatch
     r = client.post('/api/internal/lithic/event', json={'webhook_id': 'msg_declined1', 'event': event},
                     headers={'X-Occlet-Bridge-Secret': 'private-secret'})
     assert r.status_code == 200 and r.json()['status'] == 'IGNORED' and called == []
+
+
+def test_experience_lists_intents_for_visa_activity_without_tokens():
+    key, agent, card, merchant = setup_scoped('GROCERIES', 'CARD_BOUND_NETWORK')
+    r = client.post('/api/network/direct/authorize', json={'card_reference': card['id'], 'merchant_id': merchant,
+                                                           'amount_cents': 4000, 'network_reference': 'rrn-visa-act1'}).json()
+    client.post(f"/api/member/intents/{r['approval_request_id']}/approval", json={'approved': True})
+    view = client.get('/api/member/experience').json()
+    [row] = view['intents']
+    assert row['kind'] == 'MEMBER_APPROVAL_REQUEST' and row['status'] == 'USED' and row['created_at']
+    assert row['transaction_reference'] == 'local:approved-' + row['id']
+    refs = {t['reference'] for t in view['transactions']}
+    assert row['transaction_reference'] in refs | {'local:' + r for r in refs}
+    assert 'payment_token' not in row and 'payment_token' not in str(view['intents'])
+    html = client.get('/member/delegated').text
+    assert 'renderOccletVisaActivity' in html and 'occard:' in html
+    js = client.get('/member/assets/beside-delegated.js').text
+    assert 'besideOccletActivity' in js and 'besideOpenDelegated' in js

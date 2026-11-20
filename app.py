@@ -282,6 +282,7 @@ def request_card_bound_approval(card: dict, merchant_id: str, amount: int, origi
     _intents[approval_id] = {"id": approval_id, "card_id": card["id"], "agent_id": card["agent_id"],
                              "merchant_id": merchant_id, "amount_cents": amount, "flow": FLOW_CARD_BOUND, "origin": origin,
                              "status": "AWAITING_MEMBER_APPROVAL", "payment_token": None,
+                             "created_at": datetime.now(timezone.utc).isoformat(),
                              "expires_at": time.time() + INTENT_TTL_SECONDS}
     log("Delegation policy", "STEP-UP REQUIRED",
         f"{approval_id}: card-bound ${amount / 100:.2f} at {merchant_id} declined; member approval requested")
@@ -603,6 +604,19 @@ def member_experience():
                 else "PENDING_REVIEW" if current and current["status"]=="AUTHORIZED" else "CLOSED")
             requests.append({"authorization_ref":ref,"status":req_status,
                              "card_label":card_label(current["card_reference"]) if current else "Unknown", "requested_at":event["at"]})
+        intent_rows=[]
+        for intent in view["intents"]:
+            flow=intent.get("flow",FLOW_SIGNED)
+            tx_ref=("lithic:"+intent["lithic_transaction_token"] if intent.get("lithic_transaction_token")
+                    else "local:"+intent["network_reference"] if intent.get("network_reference") else None)
+            intent_rows.append({"id":intent["id"],"card_id":intent["card_id"],
+                "card_label":card_names.get(intent["card_id"],"Delegated card"),
+                "agent_id":intent.get("agent_id"),"merchant_id":intent["merchant_id"],
+                "amount_cents":intent["amount_cents"],"status":intent["status"],
+                "kind":"MEMBER_APPROVAL_REQUEST" if flow==FLOW_CARD_BOUND else "SIGNED_AGENT_INTENT",
+                "flow":flow,"member_approved":intent.get("member_approved"),
+                "created_at":intent.get("created_at",""),"transaction_reference":tx_ref})
+        intent_rows.sort(key=lambda r:r["created_at"] or "",reverse=True)
         pending=[]
         for intent in view["intents"]:
             if intent["status"]=="AWAITING_MEMBER_APPROVAL":
@@ -629,6 +643,7 @@ def member_experience():
             "protected_trip":{"protected_cents":protected["protected_cents"],
                 "yield_enabled":protected["yield_enabled"],"version":protected["version"]} if protected else None,
             "cards":view["cards"], "agents":view["agents"], "pending_approvals":pending,
+            "intents":intent_rows[:60],
             "transactions":transactions[:80], "hold_release_requests":requests,
             "note":"Local demonstration. Member controls do not have real authentication; never expose port 8000."
         }
@@ -860,6 +875,7 @@ def create_intent(req: AgentIntent):
                   "merchant_id": req.merchant_id, "amount_cents": req.amount_cents,
                   "status": "AWAITING_MEMBER_APPROVAL" if need_approval else "READY",
                   "payment_token": "pt_" + secrets.token_urlsafe(22),
+                  "created_at": datetime.now(timezone.utc).isoformat(),
                   "expires_at": time.time() + INTENT_TTL_SECONDS}
         _intents[intent_id] = intent
         log("Delegation policy", "STEP-UP REQUIRED" if need_approval else "APPROVED",
@@ -993,6 +1009,7 @@ def network_authorize(req: NetworkAuth):
         except LedgerRejected as exc:
             fail(403, "Local financial authorization", exc.code)
         intent["status"] = "AUTHORIZED"
+        intent["network_reference"] = req.network_reference
         card["spent_cents"] += req.amount_cents
         response = {"decision": "APPROVED", "authorization_id": "auth_" + secrets.token_hex(6),
                     "matched_intent_id": intent["id"], "card_alias": card["alias"],
