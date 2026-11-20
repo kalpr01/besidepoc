@@ -196,7 +196,11 @@ async function waitForMember(amount, poll) {
     feedback(money(amount) + ' is above the auto-approve limit. Waiting for the member: approve or decline it in Beside → Delegated Card → Member actions (' + left + 's left). This lab continues the purchase automatically.', true);
     const r = await poll();
     if (r.status === 'READY') { feedback('Member approved ' + money(amount) + '. Continuing the purchase…'); return 'READY'; }
-    if (r.status !== 'AWAITING_MEMBER_APPROVAL') { feedback('Purchase not completed: member approval request is ' + r.status + '.', true); await refreshAll(); return r.status; }
+    if (r.status === 'USED') {  // Flow B: Occlet re-sent the purchase when the member approved
+      if (r.lithic_transaction_token) { await lithicDecision({ transaction_token: r.lithic_transaction_token }); return 'USED'; }
+      feedback('Member approved ' + money(amount) + '. Occlet re-sent the purchase: APPROVED · hold placed on the parent card.'); await refreshAll(); return 'USED';
+    }
+    if (r.status !== 'AWAITING_MEMBER_APPROVAL' && r.status !== 'RETRYING') { feedback('Purchase not completed: member approval request is ' + r.status + '.', true); await refreshAll(); return r.status; }
     await new Promise(res => setTimeout(res, 2500));
   }
   feedback('Stopped waiting for the member approval.', true); return 'TIMEOUT';

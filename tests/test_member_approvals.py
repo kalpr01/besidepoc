@@ -14,7 +14,7 @@ def pending():
     return client.get('/api/member/experience').json()['pending_approvals']
 
 
-def test_flow_b_over_threshold_requests_member_approval_then_retry_approves():
+def test_flow_b_over_threshold_requests_member_approval_and_approval_resends_purchase():
     key, agent, card, merchant = setup_scoped('GROCERIES', 'CARD_BOUND_NETWORK')
     attempt = {'card_reference': card['id'], 'merchant_id': merchant, 'amount_cents': 4000}
     first = client.post('/api/network/direct/authorize', json={**attempt, 'network_reference': 'rrn-approval-a1'}).json()
@@ -22,26 +22,47 @@ def test_flow_b_over_threshold_requests_member_approval_then_retry_approves():
     req_id = first['approval_request_id']
     [req] = pending()
     assert req['id'] == req_id and req['amount_cents'] == 4000 and req['card_id'] == card['id']
-    # a second attempt before approval reuses the same request
     again = client.post('/api/network/direct/authorize', json={**attempt, 'network_reference': 'rrn-approval-a2'}).json()
     assert again['approval_request_id'] == req_id and len(pending()) == 1
-    assert client.get(f'/api/member/approvals/{req_id}').json()['status'] == 'AWAITING_MEMBER_APPROVAL'
-    assert client.post(f'/api/member/intents/{req_id}/approval', json={'approved': True}).status_code == 200
+    held_before = client.get('/api/state').json()['parent']['held_cents']
+    r = client.post(f'/api/member/intents/{req_id}/approval', json={'approved': True}).json()
+    # approving re-sends the purchase once, on its original (local) route
+    assert r['retry'] == {'route': 'LOCAL', 'decision': 'APPROVED', 'reason': 'POLICY_AND_FUNDING_OK'} and r['status'] == 'USED'
+    assert 'payment_token' not in r
+    assert client.get('/api/state').json()['parent']['held_cents'] == held_before + 4000
     assert pending() == []
-    ok = client.post('/api/network/direct/authorize', json={**attempt, 'network_reference': 'rrn-approval-a3'}).json()
-    assert ok['decision'] == 'APPROVED', ok
-    assert client.get(f'/api/member/approvals/{req_id}').json()['status'] == 'USED'
-    # the approval is one-time: the next attempt asks again
     nxt = client.post('/api/network/direct/authorize', json={**attempt, 'network_reference': 'rrn-approval-a4'}).json()
     assert nxt['reason'] == 'MEMBER_APPROVAL_REQUIRED_BEFORE_PURCHASE' and nxt['approval_request_id'] != req_id
 
 
-def test_flow_b_lithic_over_threshold_requests_approval_and_retry_approves():
+def test_flow_b_lithic_approval_resends_to_lithic_and_asa_approves(monkeypatch):
+    import lithic_client
     key, agent, card, merchant = setup_scoped('TICKETS', 'CARD_BOUND_NETWORK')
     token = bind(card)
     assert decide_lithic_asa(asa_for(token, 4000, merchant))['result'] != 'APPROVED'
     [req] = pending()
-    client.post(f"/api/member/intents/{req['id']}/approval", json={'approved': True})
+    sent = []
+    def fake_sim(card_token, amount, merchant_id):  # Lithic calls the ASA synchronously
+        sent.append((card_token, amount, merchant_id))
+        return {'token': 'tx-retry', 'result': decide_lithic_asa(asa_for(card_token, amount, merchant_id))['result']}
+    monkeypatch.setattr(lithic_client, 'simulate_auth', fake_sim)
+    r = client.post(f"/api/member/intents/{req['id']}/approval", json={'approved': True}).json()
+    assert sent == [(token, 4000, merchant)]
+    assert r['retry'] == {'route': 'LITHIC', 'transaction_token': 'tx-retry'} and r['status'] == 'USED'
+    assert client.get('/api/state').json()['parent']['held_cents'] == 4000
+
+
+def test_flow_b_lithic_resend_failure_leaves_approval_ready(monkeypatch):
+    import lithic_client
+    key, agent, card, merchant = setup_scoped('TICKETS', 'CARD_BOUND_NETWORK')
+    token = bind(card)
+    decide_lithic_asa(asa_for(token, 4000, merchant))
+    [req] = pending()
+    def boom(*a):
+        raise lithic_client.LithicError('sandbox down')
+    monkeypatch.setattr(lithic_client, 'simulate_auth', boom)
+    r = client.post(f"/api/member/intents/{req['id']}/approval", json={'approved': True}).json()
+    assert r['retry']['error'] and r['status'] == 'READY'
     assert decide_lithic_asa(asa_for(token, 4000, merchant))['result'] == 'APPROVED'
 
 
@@ -85,3 +106,21 @@ def test_flow_a_intent_waits_for_member_and_agent_polls_signed_status():
     assert r['decision'] == 'APPROVED', r
     # approval status endpoint never leaks the token
     assert 'payment_token' not in client.get(f'/api/member/approvals/{iid}').json()
+
+
+def test_declined_lithic_event_is_acknowledged_without_ledger_effect(monkeypatch):
+    import app as demo
+    monkeypatch.setenv('OCCLET_BRIDGE_SECRET', 'private-secret')
+    monkeypatch.setenv('OCCLET_ALLOW_TESTCLIENT', '1')
+    with demo._lock:
+        demo._parent.update(ledger_mode='OCCLET_SQL_LEDGER', id='arr_evt')
+        demo._lithic_refs['tx-declined'] = {'card_token': 'c1', 'result': 'UNAUTHORIZED_MERCHANT'}
+    called = []
+    monkeypatch.setattr(demo, 'process_signed_event', lambda **kw: called.append(kw), raising=False)
+    import occlet_lithic_events
+    monkeypatch.setattr(occlet_lithic_events, 'process_signed_event', lambda **kw: called.append(kw))
+    event = {'event_type': 'card_transaction.updated',
+             'payload': {'token': 'tx-declined', 'card_token': 'c1', 'status': 'DECLINED'}}
+    r = client.post('/api/internal/lithic/event', json={'webhook_id': 'msg_declined1', 'event': event},
+                    headers={'X-Occlet-Bridge-Secret': 'private-secret'})
+    assert r.status_code == 200 and r.json()['status'] == 'IGNORED' and called == []
